@@ -113,12 +113,13 @@ export function App() {
             <span className="pdf-icon"><BookIcon size={32}/></span><strong>{file ? file.name : '講義PDFを選択'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB · クリックして変更` : 'ここにドラッグ、またはクリック'}</span><small>PDF · 最大30MB / 100ページ</small>
           </button>
           <div className="settings-grid">
-            <label>動画の長さ<select value={options.duration} onChange={e => setOptions({...options, duration: e.target.value as Options['duration']})}><option value="short">5〜10分</option><option value="medium">15〜20分</option><option value="long">30分程度</option><option value="test">約1分（動作確認）</option></select></label>
+            <label>動画の長さ（目安）<select value={options.duration} onChange={e => setOptions({...options, duration: e.target.value as Options['duration']})}><option value="short">5〜10分</option><option value="medium">15〜20分</option><option value="long">30分程度</option><option value="test">約1分（動作確認）</option></select></label>
             <label>解説レベル<select value={options.level} onChange={e => setOptions({...options, level: e.target.value as Options['level']})}><option value="beginner">初学者向け</option><option value="standard">標準</option><option value="detailed">詳しく</option></select></label>
             <label className="wide">映像スタイル<select value={options.style} onChange={e => setOptions({...options, style: e.target.value as Options['style']})}><option value="motion">モーショングラフィックス</option><option value="whiteboard">ホワイトボード</option><option value="slides">図解スライド</option></select></label>
             <label className="wide">ナレーション<select value={options.speaker} onChange={e => setOptions({...options, speaker: Number(e.target.value)})}>{speakers.length ? speakers.map(s => <option value={s.id} key={s.id}>{s.name}</option>) : <option value="3">ずんだもん（ノーマル） / ENGINE起動後に選択可能</option>}</select></label>
             <label className="wide speed-label"><span>読み上げ速度 <strong>{options.speed.toFixed(1)}×</strong></span><input type="range" min="0.7" max="1.4" step="0.1" value={options.speed} onChange={e => setOptions({...options, speed: Number(e.target.value)})}/></label>
           </div>
+          <p className="privacy-note">資料全体の解説を優先するため、動画が指定の目安より長くなる場合があります。</p>
           <button className="primary generate-button" onClick={generate} disabled={!file || submitting || busy}>{submitting ? '準備しています…' : busy ? '動画を生成中' : '動画を生成'}<span aria-hidden="true">↗</span></button>
           <p className="privacy-note">PDFの抽出テキストとページ番号をCodexに送信します。音声と動画はこのPCで生成します。</p>
           <div className="service-status"><span className={health?.codex_available ? 'ok' : ''}>● Codex CLI</span><span className={health?.voicevox_ready ? 'ok' : ''}>● VOICEVOX</span><button type="button" onClick={() => {void Promise.all([api<Health>('/health'), api<Speaker[]>('/speakers')]).then(([h, s]) => {setHealth(h); setSpeakers(s); setNotice('');}).catch(error => setNotice(error.message));}}>接続を確認</button></div>

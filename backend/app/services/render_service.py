@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from ..config import ROOT, settings
 from .process import run_process
+from .captions import build_captions
 
 
 async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Path, on_progress=None) -> dict:
@@ -15,9 +16,19 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
     for scene, sound in zip(lecture["scenes"], audio, strict=True):
         name = f"{scene['id']}.wav"
         shutil.copyfile(sound["path"], public / name)
-        scenes.append({**scene, "audio_src": name, "audio_seconds": sound["audio_seconds"],
-            "duration_in_frames": sound["duration_in_frames"], "start_frame": offset})
-        offset += sound["duration_in_frames"]
+        visual = {**scene["visual"], "steps": [dict(step) for step in scene["visual"]["steps"]]}
+        # Estimate cue timing from text position and measured audio length.
+        # This is not forced alignment; short scenes limit speaking-rate drift.
+        position = 0
+        for step in visual["steps"]:
+            if step.get("cue"):
+                position = scene["narration"].index(step["cue"], position)
+                step["at_frame"] = round(position / len(scene["narration"]) * sound["audio_seconds"] * 30)
+        scenes.append({**scene, "visual": visual, "audio_src": name, "audio_seconds": sound["audio_seconds"],
+            "captions": build_captions(scene["narration"], sound["audio_seconds"]),
+            "thinking_start_frame": sound["duration_in_frames"],
+            "duration_in_frames": sound["duration_in_frames"] + scene.get("thinking_seconds", 0) * 30, "start_frame": offset})
+        offset += scenes[-1]["duration_in_frames"]
     props = {"title": lecture["title"], "scenes": scenes, "style": style, "duration_in_frames": offset}
     props_path = workdir / "render_props.json"
     props_path.write_text(json.dumps(props, ensure_ascii=False))

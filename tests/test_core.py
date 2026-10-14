@@ -120,3 +120,24 @@ def test_codex_command_preserves_protection(tmp_path):
     assert "shell_tool" in command and "forced_login_method=\"chatgpt\"" in command
     assert "--ignore-user-config" in command and "--ephemeral" in command
     assert GenerationSettings().target_seconds == 360
+
+
+@pytest.mark.parametrize('narration', ['資料によると、先頭から比較します。', '資料では順番に比較します。'])
+def test_narration_rejects_source_prefaces(valid_lecture, narration):
+    valid_lecture['scenes'][0]['narration'] = narration
+    with pytest.raises(ValueError, match='出典前置き'):
+        validate_lecture(valid_lecture, [1])
+
+
+def test_visual_cues_follow_narration_and_support_comparison_rows(valid_lecture):
+    scene = valid_lecture['scenes'][0]
+    scene['visual']['steps'] = [
+        {'action': 'reveal', 'target': 'a', 'cue': '先頭'},
+        {'action': 'highlight_node', 'target': 'b', 'cue': '比較'},
+    ]
+    assert validate_lecture(valid_lecture, [1])
+    scene['visual']['steps'].reverse()
+    with pytest.raises(ValueError, match='cue'):
+        validate_lecture(valid_lecture, [1])
+    scene['visual'].update(type='comparison', nodes=[], edges=[], columns=['探索'], rows=[['順番に比較']], steps=[{'action': 'highlight_item', 'target': '0', 'cue': '比較'}])
+    assert validate_lecture(valid_lecture, [1])

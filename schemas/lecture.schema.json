@@ -1,5 +1,33 @@
 {
   "$defs": {
+    "CoverageEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": {
+          "pattern": "^topic_[0-9]{4}$",
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "scene_id": {
+          "pattern": "^scene_[0-9]{3}$",
+          "title": "Scene Id",
+          "type": "string"
+        },
+        "narration_excerpt": {
+          "maxLength": 400,
+          "minLength": 10,
+          "title": "Narration Excerpt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "scene_id",
+        "narration_excerpt"
+      ],
+      "title": "CoverageEntry",
+      "type": "object"
+    },
     "Edge": {
       "additionalProperties": false,
       "properties": {
@@ -102,6 +130,23 @@
         },
         "visual": {
           "$ref": "#/$defs/Visual"
+        },
+        "kind": {
+          "default": "lecture",
+          "enum": [
+            "lecture",
+            "quiz",
+            "quiz_answer"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "thinking_seconds": {
+          "default": 0,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Thinking Seconds",
+          "type": "integer"
         }
       },
       "required": [
@@ -132,6 +177,12 @@
         },
         "target": {
           "title": "Target",
+          "type": "string"
+        },
+        "cue": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Cue",
           "type": "string"
         }
       },
@@ -259,9 +310,17 @@
       "items": {
         "$ref": "#/$defs/Scene"
       },
-      "maxItems": 32,
+      "maxItems": 160,
       "minItems": 1,
       "title": "Scenes",
+      "type": "array"
+    },
+    "coverage": {
+      "items": {
+        "$ref": "#/$defs/CoverageEntry"
+      },
+      "maxItems": 1200,
+      "title": "Coverage",
       "type": "array"
     }
   },

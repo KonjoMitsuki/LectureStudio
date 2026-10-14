@@ -9,6 +9,30 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
+class SourceTopic(StrictModel):
+    id: str = Field(pattern=r"^topic_[0-9]{4}$")
+    title: str = Field(min_length=1, max_length=80)
+    source_page: int = Field(ge=1)
+    source_excerpt: str = Field(min_length=1, max_length=400)
+
+
+class PageReview(StrictModel):
+    page: int = Field(ge=1)
+    status: Literal["content", "non_content", "unreadable"]
+    reason: str = Field(max_length=160)
+
+
+class ContentPlan(StrictModel):
+    topics: list[SourceTopic] = Field(min_length=1, max_length=1200)
+    pages: list[PageReview] = Field(min_length=1, max_length=100)
+
+
+class CoverageEntry(StrictModel):
+    topic_id: str = Field(pattern=r"^topic_[0-9]{4}$")
+    scene_id: str = Field(pattern=r"^scene_[0-9]{3}$")
+    narration_excerpt: str = Field(min_length=10, max_length=400)
+
+
 class Node(StrictModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,32}$")
     label: str = Field(min_length=1, max_length=28)
@@ -24,6 +48,7 @@ class Edge(StrictModel):
 class Step(StrictModel):
     action: Literal["reveal", "highlight_node", "highlight_edge", "highlight_item"]
     target: str
+    cue: str = Field(default="", max_length=80)
 
 
 class Visual(StrictModel):
@@ -62,7 +87,7 @@ class Visual(StrictModel):
                 raise ValueError("強調対象ノードが存在しません")
             if step.action == "highlight_edge" and step.target not in edge_ids:
                 raise ValueError("強調対象矢印が存在しません")
-            if step.action in {"reveal", "highlight_item"} and step.target not in ids | edge_ids | {str(i) for i in range(len(self.items))}:
+            if step.action in {"reveal", "highlight_item"} and step.target not in ids | edge_ids | {str(i) for i in range(max(len(self.items), len(self.rows)))}:
                 raise ValueError("アニメーションの対象が存在しません")
         return self
 
@@ -76,18 +101,31 @@ class Scene(StrictModel):
     supplemental: bool
     estimated_seconds: float = Field(gt=0, le=300)
     visual: Visual
+    kind: Literal["lecture", "quiz", "quiz_answer"] = "lecture"
+    thinking_seconds: int = Field(default=0, ge=0, le=10)
 
 
 class Lecture(StrictModel):
     title: str = Field(min_length=1, max_length=80)
     learning_goals: list[str] = Field(min_length=1, max_length=8)
     warnings: list[str] = Field(max_length=12)
-    scenes: list[Scene] = Field(min_length=1, max_length=32)
+    scenes: list[Scene] = Field(min_length=1, max_length=160)
+    coverage: list[CoverageEntry] = Field(default_factory=list, max_length=1200)
 
     @model_validator(mode="after")
     def unique_scenes(self):
         if len({s.id for s in self.scenes}) != len(self.scenes):
             raise ValueError("シーンIDが重複しています")
+        for index, scene in enumerate(self.scenes):
+            if scene.kind == "quiz":
+                if scene.thinking_seconds < 3:
+                    raise ValueError("クイズには3秒以上の思考時間が必要です")
+                if index + 1 >= len(self.scenes) or self.scenes[index + 1].kind != "quiz_answer":
+                    raise ValueError("クイズの直後には正答と解説のシーンが必要です")
+            elif scene.thinking_seconds:
+                raise ValueError("思考時間はクイズにのみ設定できます")
+            if scene.kind == "quiz_answer" and (index == 0 or self.scenes[index - 1].kind != "quiz"):
+                raise ValueError("解説シーンには直前のクイズが必要です")
         return self
 
 
@@ -97,6 +135,10 @@ class GenerationSettings(StrictModel):
     style: Literal["whiteboard", "motion", "slides"] = "motion"
     speaker: int = Field(default=3, ge=0, le=10000)
     speed: float = Field(default=1.0, ge=0.7, le=1.4)
+
+    @property
+    def quiz_count(self) -> int:
+        return {"test": 0, "short": 1, "medium": 2, "long": 3}[self.duration]
 
     @property
     def target_seconds(self) -> int:
@@ -112,8 +154,17 @@ def validate_lecture(raw: dict, page_numbers: list[int]) -> Lecture:
             raise ValueError("資料に存在しない参照ページがあります")
         if not scene.source_pages and not scene.supplemental:
             raise ValueError("資料由来のシーンには参照ページが必要です")
+        last_position = -1
+        for step in scene.visual.steps:
+            if step.cue:
+                position = scene.narration.find(step.cue, max(0, last_position))
+                if position < 0:
+                    raise ValueError("画面切り替えのcueはナレーション中の順序通りの原文にしてください")
+                last_position = position
+        if any(phrase in scene.narration for phrase in ("資料によると", "資料により", "資料では", "資料によれば", "この資料では", "スライドによると", "スライドでは")):
+            raise ValueError("ナレーションの出典前置きを省き、内容を直接説明してください")
     return result
 
 
-def write_schema(path: Path):
-    path.write_text(json.dumps(Lecture.model_json_schema(), ensure_ascii=False, indent=2), encoding="utf-8")
+def write_schema(path: Path, model: type[StrictModel] = Lecture):
+    path.write_text(json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2), encoding="utf-8")

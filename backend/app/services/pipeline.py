@@ -8,6 +8,7 @@ from ..config import settings
 from ..models import GenerationSettings, validate_lecture
 from ..storage import Store
 from .ai_analyzer import CodexCLIAnalyzer
+from .coverage import validate_content_plan, validate_coverage
 from .pdf_parser import parse_pdf
 from .voicevox import Voicevox
 from .render_service import render_video
@@ -73,13 +74,16 @@ class Pipeline:
                 save_json(document_path, document)
             self.store.update(project_id, page_count=document["page_count"], warnings=document["warnings"])
             step("ai")
-            fingerprint = hashlib.sha256(json.dumps(options.model_dump(), sort_keys=True).encode()).hexdigest()
+            fingerprint = hashlib.sha256(json.dumps({"settings": options.model_dump(), "visual_script_version": 4}, sort_keys=True).encode()).hexdigest()
             script = workdir / "lecture.json"
             marker = workdir / "settings.sha256"
             lecture = None
             if script.exists() and marker.exists() and marker.read_text() == fingerprint:
                 try:
                     lecture = validate_lecture(json.loads(script.read_text()), [p["number"] for p in document["pages"]])
+                    plan_path = workdir / "ai/content_plan.json"
+                    if plan_path.exists():
+                        validate_coverage(lecture, validate_content_plan(json.loads(plan_path.read_text()), document))
                 except (ValueError, ValidationError):
                     # Keep the invalid artifact for diagnosis, but do not retry it forever.
                     script.replace(workdir / "lecture.invalid.json")
@@ -101,10 +105,13 @@ class Pipeline:
                 self.store.save_audio(project_id, scene.id, item)
                 self.store.update(project_id, progress=(i + 1) / len(lecture.scenes))
             save_json(workdir / "audio.json", audio)
-            actual_seconds = sum(a["duration_in_frames"] for a in audio) / 30
+            actual_seconds = sum(a["duration_in_frames"] for a in audio) / 30 + sum(s.thinking_seconds for s in lecture.scenes)
             minimum, maximum = {"test": (40, 100), "short": (300, 600), "medium": (900, 1200), "long": (1800, 2400)}[options.duration]
             if not minimum <= actual_seconds <= maximum:
-                warnings.append(f"実音声の動画長は{actual_seconds / 60:.1f}分です。指定した目安の範囲から外れています")
+                if actual_seconds > maximum:
+                    warnings.append(f"資料全体の解説を優先したため、動画長は{actual_seconds / 60:.1f}分となり、指定した目安を超えています")
+                else:
+                    warnings.append(f"実音声の動画長は{actual_seconds / 60:.1f}分です。指定した目安の範囲から外れています")
                 self.store.update(project_id, warnings=warnings)
             step("render", 0)
             result = await self.renderer(lecture.model_dump(), audio, options.style, workdir,
