@@ -1,0 +1,15 @@
+{
+  "name": "lecture-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "bash scripts/launch.sh",
+    "test:e2e": "playwright test",
+    "test:unit": ".venv/bin/python -m pytest tests && node tests/timeline.test.mjs",
+    "phase0": ".venv/bin/python scripts/phase0.py",
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev",
+    "video:studio": "npm --prefix video run dev"
+  },
+  "devDependencies": {"@playwright/test": "1.58.2"}
+}

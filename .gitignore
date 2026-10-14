@@ -1,0 +1,15 @@
+.venv/
+node_modules/
+dist/
+build/
+tools/
+data/
+.env
+__pycache__/
+.pytest_cache/
+test-results/
+playwright-report/
+video/out/
+video/public/
+*.egg-info/
+*.tsbuildinfo

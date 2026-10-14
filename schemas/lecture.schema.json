@@ -1,0 +1,276 @@
+{
+  "$defs": {
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9_-]{1,32}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 20,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "target",
+        "label"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "Node": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9_-]{1,32}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 28,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "Node",
+      "type": "object"
+    },
+    "Scene": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^scene_[0-9]{3}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "narration": {
+          "maxLength": 1500,
+          "minLength": 1,
+          "title": "Narration",
+          "type": "string"
+        },
+        "concepts": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Concepts",
+          "type": "array"
+        },
+        "source_pages": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 20,
+          "title": "Source Pages",
+          "type": "array"
+        },
+        "supplemental": {
+          "title": "Supplemental",
+          "type": "boolean"
+        },
+        "estimated_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Estimated Seconds",
+          "type": "number"
+        },
+        "visual": {
+          "$ref": "#/$defs/Visual"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "narration",
+        "concepts",
+        "source_pages",
+        "supplemental",
+        "estimated_seconds",
+        "visual"
+      ],
+      "title": "Scene",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "reveal",
+            "highlight_node",
+            "highlight_edge",
+            "highlight_item"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "target"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "Visual": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "flowchart",
+            "state_diagram",
+            "block_diagram",
+            "network",
+            "timeline",
+            "comparison",
+            "formula",
+            "keywords"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "maxItems": 6,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 10,
+          "title": "Edges",
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Items",
+          "type": "array"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Columns",
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxItems": 5,
+          "title": "Rows",
+          "type": "array"
+        },
+        "formula": {
+          "maxLength": 160,
+          "title": "Formula",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "maxItems": 12,
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "nodes",
+        "edges",
+        "items",
+        "columns",
+        "rows",
+        "formula",
+        "steps"
+      ],
+      "title": "Visual",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "learning_goals": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Learning Goals",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 12,
+      "title": "Warnings",
+      "type": "array"
+    },
+    "scenes": {
+      "items": {
+        "$ref": "#/$defs/Scene"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Scenes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "title",
+    "learning_goals",
+    "warnings",
+    "scenes"
+  ],
+  "title": "Lecture",
+  "type": "object"
+}
