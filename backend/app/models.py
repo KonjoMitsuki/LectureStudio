@@ -167,4 +167,21 @@ def validate_lecture(raw: dict, page_numbers: list[int]) -> Lecture:
 
 
 def write_schema(path: Path, model: type[StrictModel] = Lecture):
-    path.write_text(json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2), encoding="utf-8")
+    schema = model.model_json_schema()
+
+    def require_all_fields(value):
+        # Structured Outputs requires every property, including fields with local
+        # defaults. Apply this to $defs too without changing local validation or
+        # the defaults used when loading existing lecture artifacts.
+        if isinstance(value, dict):
+            if value.get("type") == "object" and "properties" in value:
+                value["required"] = list(value["properties"])
+                value["additionalProperties"] = False
+            for child in value.values():
+                require_all_fields(child)
+        elif isinstance(value, list):
+            for child in value:
+                require_all_fields(child)
+
+    require_all_fields(schema)
+    path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding="utf-8")

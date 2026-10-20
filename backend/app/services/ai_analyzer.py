@@ -12,6 +12,31 @@ from .coverage import coverage_warnings, validate_content_plan, validate_coverag
 T = TypeVar("T", bound=StrictModel)
 
 
+def classify_codex_failure(details: str) -> tuple[str, str, str]:
+    """Return only fixed diagnostic labels; never expose server messages or stderr."""
+    text = details.lower()
+    if "invalid_json_schema" in text or "invalid schema" in text:
+        return ("出力スキーマ", "invalid_json_schema",
+            "AI出力形式の設定がサーバーに拒否されました。アプリを更新・再起動して再試行してください")
+    if any(word in text for word in ("read-only file system", "readonly database", "permission denied")):
+        return ("ファイル権限", "permission_denied",
+            "Codexの状態保存先に書き込めません。通常のWSLターミナルからアプリを起動してください")
+    if any(word in text for word in ("usage_limit_reached", "rate_limit_exceeded", "insufficient_quota",
+            "usage limit", "rate limit", "quota exceeded", "429")):
+        return ("利用制限", "usage_or_rate_limit",
+            "Codexの残量とリセット時刻を確認し、利用枠の回復後に再試行してください")
+    if any(word in text for word in ("not logged in", "please log in", "401", "authentication",
+            "token_expired", "invalid_api_key", "refresh token", "login")):
+        return ("認証", "authentication_failed",
+            "アプリと同じユーザーのWSLターミナルでcodex login statusを確認してください")
+    if any(word in text for word in ("connection", "connect error", "dns", "tls", "timed out",
+            "stream disconnected", "error sending request")):
+        return ("接続", "connection_failed",
+            "ネットワーク接続を確認して再試行してください")
+    return ("CLI実行", "unknown",
+        "codex login statusとcodex --versionを確認してください。保存済みの診断情報も確認できます")
+
+
 class LectureAnalyzer(Protocol):
     async def analyze(self, document: dict, options: GenerationSettings, workdir: Path) -> Lecture: ...
 
@@ -82,26 +107,41 @@ class CodexCLIAnalyzer:
             except asyncio.TimeoutError as exc:
                 raise RuntimeError("Codexの実行がタイムアウトしました。認証・利用制限・接続を確認して再試行してください") from exc
             events = []
+            errors = []
+            turn_failed = False
             forbidden = False
             for line in stdout.splitlines():
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(event, dict):
+                    continue
                 item = event.get("item", {})
+                if not isinstance(item, dict):
+                    item = {}
                 item_type = item.get("type")
                 if item_type and item_type not in {"agent_message", "reasoning", "plan"}:
                     forbidden = True
                 # Persist metadata, never PDF text, generated narration, tokens, or prompts in logs.
                 events.append({"type": event.get("type"), "item_type": item_type, "usage": event.get("usage")})
+                if event.get("type") in {"error", "turn.failed"}:
+                    turn_failed |= event.get("type") == "turn.failed"
+                    error = event.get("error", {})
+                    message = error.get("message") if isinstance(error, dict) else error
+                    for detail in (event.get("message"), message):
+                        if isinstance(detail, str):
+                            errors.append(detail)
             (workdir / f"{prefix}events_{attempt}.json").write_text(json.dumps(events, indent=2))
             if forbidden:
                 raise RuntimeError("Codexが禁止されたツール呼び出しを出力しました。処理を停止しました")
-            if code or not output.exists():
-                # Raw stderr may contain account or file details; expose only known error categories.
-                category = "認証" if any(w in stderr.lower() for w in ["login", "401", "auth"]) else "CLI起動・接続・利用制限"
-                (workdir / f"{prefix}failure.json").write_text(json.dumps({"exit_code": code, "category": category}))
-                raise RuntimeError(f"Codexの{category}エラー（終了コード{code}）。codex login statusとCLIバージョンを確認してください")
+            if code or turn_failed or not output.exists():
+                # CLI server errors arrive on stdout as JSONL, often with empty
+                # stderr. Classify both, but persist only allowlisted labels.
+                category, reason, guidance = classify_codex_failure(stderr + "\n" + "\n".join(errors))
+                (workdir / f"{prefix}failure.json").write_text(json.dumps(
+                    {"exit_code": code, "category": category, "reason": reason}, ensure_ascii=False))
+                raise RuntimeError(f"Codexの{category}エラー（終了コード{code}）。{guidance}")
             try:
                 return validate(json.loads(output.read_text()))
             except (ValueError, ValidationError) as exc:

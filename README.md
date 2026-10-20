@@ -122,7 +122,7 @@ Codexから実行している場合、外側のサンドボックスがスレッ
 `.env.example` を `.env` にコピーして設定できます。主な項目は `LECTURE_VOICEVOX_URL`、`LECTURE_CODEX_TIMEOUT`、`LECTURE_RENDER_CONCURRENCY`。
 Chromiumを既に導入している場合は `LECTURE_CHROMIUM_PATH` に実行ファイルの絶対パスを指定できます。
 
-- Codexエラー: `codex login status` と `codex --version` を確認。認証期限切れは再ログイン、利用制限は回復後に再試行。
+- Codexエラー: 表示された分類で対処します。認証エラーはアプリと同じWSLユーザーで `codex login status` を確認、利用制限は回復後に再試行。出力スキーマエラーはアプリを更新・再起動。ファイル権限エラーは通常のWSLターミナルから起動します。CLIのバージョンは `codex --version`、安全な診断分類はプロジェクトの `ai/failure.json`（計画生成時は `ai/plan_failure.json`）で確認できます。
 - VOICEVOXエラー: `curl http://127.0.0.1:50021/version` で接続確認。ENGINEを先に起動。
 - レンダリングエラー: 対象プロジェクトの `render.log` を確認。Chromium起動時の権限やLinux依存を確認。
 - 画像だけのPDF: OCRは未対応。OCR済みのPDFを使用。
