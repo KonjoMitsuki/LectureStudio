@@ -126,12 +126,19 @@ async def test_failure_recovery_keeps_validated_script_and_reuses_analyzer(tmp_p
     assert failed['status'] == 'failed' and failed['stage'] == 'audio'
     assert (workdir / 'lecture.json').exists() and analyzer.calls == 1
     assert json.loads((workdir / 'error.json').read_text())['type'] == 'ConnectError'
+    first_events = store.events(project['id'], first)
+    assert first_events[-1]['level'] == 'error'
+    assert any('台本が完成' in event['message'] and '線形探索' in '\n'.join(event['details']) for event in first_events)
+    assert store.activity(project['id'])['completed_stages'] == ['pdf', 'ai']
     voice.fail = False
     second = store.enqueue(project['id'], project['settings'], 10)
     await pipeline.run(project['id'], second)
     assert store.get(project['id'])['status'] == 'completed'
     assert analyzer.calls == 1
     assert [row['status'] for row in store.job_history(project['id'])] == ['completed', 'failed']
+    assert store.events(project['id'], first) == first_events
+    assert store.activity(project['id'])['completed_stages'] == ['pdf', 'ai', 'audio', 'render']
+    assert store.events(project['id'], second)[-1]['level'] == 'success'
 
 
 def test_restart_recovery(tmp_path):
@@ -170,3 +177,41 @@ async def test_second_worker_cannot_use_same_data_directory(tmp_path):
         with pytest.raises(RuntimeError, match='1プロセス'):
             async with second.router.lifespan_context(second):
                 pytest.fail('second worker started')
+
+
+async def test_readable_diagnostics_export_and_attempt_selection(client, pdf, valid_lecture):
+    from backend.app.services.diagnostics import GenerationLog
+    item = (await client.post('/api/projects', files={'file': ('sample.pdf', pdf)})).json()
+    store = client.app.state.store
+    project_id = item['id']
+    base = f'/api/projects/{project_id}'
+    first = store.enqueue(project_id, item['settings'], 10)
+    log = GenerationLog(store, project_id, first)
+    log.begin_stage('ai')
+    for i in range(130):
+        log.emit(f'内容を確認中：{i}', details=['台本の抜粋：' + 'あ' * 1000])
+    store.update(project_id, status='failed', stage='ai')
+    store.job(first, 'failed', 'ai', '時間切れ')
+    log.emit('AIの待機上限に達しました', level='error', task=True)
+    (store.directory(project_id) / 'lecture.json').write_text(json.dumps(valid_lecture, ensure_ascii=False))
+    result = (await client.get(base + '/diagnostics')).json()
+    assert len(result['events']) == 120 and result['has_more']
+    assert result['events'][-1]['level'] == 'error'
+    assert len(result['events'][-2]['details'][0]) <= 501
+    assert result['activity']['running'] is False
+    assert any(a['name'] == 'lecture.json' and a['bytes'] > 0 for a in result['artifact_summaries'])
+    transcript = await client.get(base + '/transcript')
+    assert '線形探索' in transcript.text and '先頭から順番に値を比較します。' in transcript.text
+    exported = await client.get(base + '/logs?download=true')
+    assert 'attachment' in exported.headers['content-disposition']
+    assert '内容を確認中：0' in exported.text and 'AIの待機上限に達しました' in exported.text
+    second = store.enqueue(project_id, item['settings'], 10)
+    current = (await client.get(base + '/diagnostics')).json()
+    assert current['selected_job_id'] == second and current['activity'] is None and current['events'] == []
+    previous = (await client.get(base + f'/diagnostics?job_id={first}')).json()
+    assert previous['events'][-1]['level'] == 'error' and previous['activity'] is None
+    assert (await client.get(base + '/diagnostics?job_id=unknown')).status_code == 404
+    # Events and live snapshots disappear together with the project.
+    store.update(project_id, status='failed')
+    assert (await client.delete(base)).status_code == 204
+    assert store.activity(project_id) is None and list(store.export_events(project_id)) == []

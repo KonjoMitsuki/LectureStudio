@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {api, time, type Health, type Options, type Project, type Speaker} from './api';
+import {DiagnosticsPanel} from './DiagnosticsPanel';
 
 const stages = [{id: 'pdf', label: 'PDFを解析'}, {id: 'ai', label: '講義と台本を構成'}, {id: 'audio', label: '日本語音声を合成'}, {id: 'render', label: '図解動画を生成'}];
 const labels: Record<string, string> = {uploaded: '準備完了', queued: '順番待ち', running: '生成中', completed: '完成', failed: '要確認'};
@@ -96,7 +97,7 @@ export function App() {
     } catch (error) {setNotice(error instanceof Error ? error.message : '削除できません');}
   }
 
-  const stageIndex = stages.findIndex(stage => stage.id === active?.stage);
+  const currentStage = stages.find(stage => stage.id === active?.stage)?.label;
   const busy = active?.status === 'queued' || active?.status === 'running';
   const credit = speakers.find(speaker => speaker.id === active?.settings.speaker)?.credit ?? 'VOICEVOX';
 
@@ -140,9 +141,9 @@ export function App() {
               <p className="accuracy-note">AIの解説には誤りが含まれる場合があります。参照ページと照合して学習してください。</p>
             </> : <div className="generation-state">
               {active.status === 'failed' ? <div className="error-box" role="alert"><strong>生成を続けられませんでした</strong><p>{active.error}</p><button className="primary" onClick={() => retry(active)} disabled={submitting}>保存済みの工程から再試行</button><a href={`/api/projects/${active.id}/diagnostics`} target="_blank" rel="noreferrer">診断情報を開く ↗</a></div> : <div className="progress-caption"><span className={busy ? 'working-indicator' : ''}/><strong>{active.status === 'queued' ? 'ほかの講義の完了を待っています' : active.status === 'uploaded' ? '生成の準備ができました' : '学びの映像を組み立てています'}</strong><p>この画面を閉じても、アプリを起動している間は生成が続きます。</p>{active.status === 'uploaded' ? <button className="primary" onClick={() => retry(active)}>生成を開始</button> : null}</div>}
-              <ol className="stage-list">{stages.map((stage, i) => <li key={stage.id} className={i === stageIndex ? 'current' : i < stageIndex ? 'done' : ''}><span className="stage-icon">{i < stageIndex ? '✓' : String(i + 1).padStart(2, '0')}</span><span>{stage.label}</span>{i === stageIndex && active.status === 'running' ? <small>{active.progress !== null ? `${Math.floor(active.progress * 100)}%` : '処理中'}</small> : null}</li>)}</ol>
-              {active.progress !== null && active.status === 'running' ? <progress aria-label="現在の工程の進捗" max={1} value={active.progress}/> : null}
+              {active.progress !== null && active.status === 'running' ? <><p className="diagnostics-note">{currentStage}：{Math.floor(active.progress * 100)}%</p><progress aria-label="現在の工程の進捗" max={1} value={active.progress}/></> : null}
             </div>}
+            {active.status !== 'uploaded' ? <DiagnosticsPanel key={active.id} project={active}/> : null}
             {active.warnings.length ? <details className="warnings"><summary>資料と生成結果の確認事項（{active.warnings.length}件）</summary><ul>{active.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
           </>}
         </section>

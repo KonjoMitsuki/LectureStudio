@@ -5,6 +5,7 @@ import wave
 from pathlib import Path
 import httpx
 from ..config import settings
+from .diagnostics import record
 
 FPS = 30
 TAIL_FRAMES = 15
@@ -35,6 +36,7 @@ class Voicevox:
             if output.exists():
                 try:
                     seconds = wav_seconds(output)
+                    record("保存済みの同じ音声を再利用できました")
                     return {"path": str(output), "audio_seconds": seconds, "duration_in_frames": max(30, math.ceil(seconds * FPS) + TAIL_FRAMES)}
                 except (ValueError, wave.Error, EOFError):
                     output.unlink()

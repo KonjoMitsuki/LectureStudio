@@ -6,13 +6,14 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .config import ROOT, settings
 from .models import GenerationSettings, StrictModel
 from .services.pipeline import Pipeline
 from .services.voicevox import Voicevox
+from .services.diagnostics import activity_snapshot, format_event
 from .storage import Store
 
 
@@ -188,12 +189,51 @@ def create_app(data_dir: Path | None = None, pipeline_factory=Pipeline) -> FastA
         return JSONResponse(json.loads(path.read_text()))
 
     @app.get("/api/projects/{project_id}/diagnostics")
-    def diagnostics(project_id: str):
+    def diagnostics(project_id: str, job_id: str | None = None):
         row = project(project_id)
         directory = store.directory(project_id)
-        artifacts = [p.name for p in directory.iterdir() if p.is_file()]
+        artifacts = sorted(p.name for p in directory.iterdir() if p.is_file())
+        jobs = store.job_history(project_id)
+        selected = next((job for job in jobs if job["id"] == job_id), None) if job_id else (jobs[0] if jobs else None)
+        if job_id and selected is None:
+            raise HTTPException(404, "生成の記録が見つかりません")
+        descriptions = {"document.json": "PDFから読み取った文字とページ情報", "lecture.json": "完成した台本と図解の構成",
+            "coverage.json": "解説項目と台本の対応・解説漏れの検証結果", "audio.json": "シーン別の音声と長さの一覧",
+            "render_props.json": "図解・字幕・音声の配置", "render.log": "動画書き出しの詳しい記録（途中経過を含む）",
+            "video.mp4": "完成した動画", "video.partial.mp4": "書き出し途中の動画（完成前）",
+            "video_metadata.json": "動画の長さ・映像・音声の検査情報", "error.json": "前回失敗した工程と原因",
+            "ai/content_plan.json": "AIが整理した解説項目の一覧"}
+        summaries = [{"name": name, "description": description, "bytes": (directory / name).stat().st_size}
+            for name, description in descriptions.items() if (directory / name).is_file()]
+        events = store.events(project_id, selected["id"], 121) if selected else []
         return {"status": row["status"], "stage": row["stage"], "error": row["error"], "artifacts": artifacts,
-            "jobs": store.job_history(project_id)}
+            "jobs": jobs, "selected_job_id": selected["id"] if selected else None,
+            "activity": activity_snapshot(store.activity(project_id), row, jobs[0] if jobs else None)
+                if selected and jobs[0]["id"] == selected["id"] else None,
+            "events": events[-120:], "has_more": len(events) > 120, "artifact_summaries": summaries}
+
+    @app.get("/api/projects/{project_id}/logs")
+    def generation_logs(project_id: str, download: bool = False):
+        project(project_id)
+        def lines():
+            yield "Lecture Studio 生成の記録（全試行・時刻は日本時間）\n\n"
+            for event in store.export_events(project_id):
+                yield format_event(event)
+        return StreamingResponse(lines(), media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-store", **({"Content-Disposition": 'attachment; filename="generation-log.txt"'} if download else {})})
+
+    @app.get("/api/projects/{project_id}/transcript")
+    def transcript(project_id: str):
+        project(project_id)
+        path = store.directory(project_id) / "lecture.json"
+        if not path.is_file():
+            raise HTTPException(404, "台本はまだ生成されていません")
+        lecture = json.loads(path.read_text())
+        lines = [lecture["title"], "", "学習内容", *[f"・{goal}" for goal in lecture["learning_goals"]], ""]
+        for i, scene in enumerate(lecture["scenes"], 1):
+            lines.extend([f"{i}. {scene['title']}", f"参照ページ：{', '.join(map(str, scene['source_pages'])) or '補足説明'}",
+                scene["narration"], ""])
+        return PlainTextResponse("\n".join(lines), headers={"Cache-Control": "no-store"})
 
     built = ROOT / "frontend/dist"
     if built.exists():

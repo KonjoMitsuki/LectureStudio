@@ -41,6 +41,19 @@ class Store:
                     scene_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, seconds REAL NOT NULL,
                     PRIMARY KEY(project_id,scene_id,kind)
                 );
+                CREATE TABLE IF NOT EXISTS generation_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL, stage TEXT NOT NULL, level TEXT NOT NULL,
+                    message TEXT NOT NULL, details TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS generation_events_job ON generation_events(job_id,id);
+                CREATE INDEX IF NOT EXISTS generation_events_project ON generation_events(project_id,id);
+                CREATE TABLE IF NOT EXISTS generation_activity (
+                    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+                    data TEXT NOT NULL
+                );
             """)
 
     @contextmanager
@@ -116,6 +129,42 @@ class Store:
     def job_history(self, project_id: str):
         with self.connect() as conn:
             return [dict(row) for row in conn.execute("SELECT * FROM jobs WHERE project_id=? ORDER BY created_at DESC", (project_id,))]
+
+    def save_activity(self, project_id: str, activity: dict, event: dict | None = None):
+        with self.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO generation_activity VALUES(?,?)",
+                (project_id, json.dumps(activity, ensure_ascii=False)))
+            if event:
+                conn.execute("INSERT INTO generation_events(project_id,job_id,created_at,stage,level,message,details) VALUES(?,?,?,?,?,?,?)",
+                    (project_id, activity["job_id"], event["created_at"], event["stage"], event["level"],
+                     event["message"], json.dumps(event["details"], ensure_ascii=False)))
+
+    def activity(self, project_id: str):
+        with self.connect() as conn:
+            row = conn.execute("SELECT data FROM generation_activity WHERE project_id=?", (project_id,)).fetchone()
+            return json.loads(row["data"]) if row else None
+
+    def events(self, project_id: str, job_id: str, limit: int = 100):
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM generation_events WHERE project_id=? AND job_id=? ORDER BY id DESC LIMIT ?",
+                (project_id, job_id, limit)).fetchall()
+            return [{**dict(row), "details": json.loads(row["details"])} for row in reversed(rows)]
+
+    def export_events(self, project_id: str):
+        # Close each connection before yielding: StreamingResponse can resume the
+        # iterator on a different thread. Bound both memory and the export snapshot.
+        with self.connect() as conn:
+            maximum = conn.execute("SELECT coalesce(max(id),0) FROM generation_events WHERE project_id=?", (project_id,)).fetchone()[0]
+        last = 0
+        while last < maximum:
+            with self.connect() as conn:
+                rows = conn.execute("SELECT * FROM generation_events WHERE project_id=? AND id>? AND id<=? ORDER BY id LIMIT 500",
+                    (project_id, last, maximum)).fetchall()
+            if not rows:
+                break
+            for row in rows:
+                last = row["id"]
+                yield {**dict(row), "details": json.loads(row["details"])}
 
     def recover(self):
         with self.connect() as conn:
