@@ -84,8 +84,27 @@ export const Diagram: React.FC<{visual: Visual; palette: Palette; duration: numb
   visual.steps.forEach((step, index) => {
     if (allowHighlight && frame >= stepFrame(visual, duration, index)) active = step.target;
   });
-  if (visual.type === 'formula') return <Formula formula={visual.formula} palette={palette} frame={frame}/>;
-  if (visual.type === 'comparison') return <Comparison visual={visual} palette={palette} frame={frame} spacing={spacing} duration={duration} active={active}/>;
-  if (['timeline', 'keywords'].includes(visual.type)) return <Items visual={visual} palette={palette} frame={frame} active={active} spacing={spacing} duration={duration}/>;
-  return <Graph visual={visual} palette={palette} frame={frame} active={active} spacing={spacing} duration={duration}/>;
+  let content: React.ReactNode;
+  let height = 620;
+  if (visual.type === 'formula') content = <Formula formula={visual.formula} palette={palette} frame={frame}/>;
+  else if (visual.type === 'comparison') {
+    const columns = Math.max(1, visual.columns.length);
+    const rowHeight = (row: string[]) => Math.max(...row.map(cell => {
+      const size = cell.length > 25 ? 30 : 38;
+      return Math.ceil(cell.length / Math.max(1, Math.floor((1696 / columns - 54) / size))) * size * 1.4 + 46;
+    }));
+    height = Math.max(height, rowHeight(visual.columns) + visual.rows.reduce((sum, row) => sum + rowHeight(row), 0));
+    content = <Comparison visual={visual} palette={palette} frame={frame} spacing={spacing} duration={duration} active={active}/>;
+  } else if (['timeline', 'keywords'].includes(visual.type)) {
+    const columns = visual.type === 'timeline' ? 1 : 2;
+    const size = columns === 1 ? 42 : 46;
+    const lineChars = Math.max(1, Math.floor((1696 / columns - 144) / size));
+    let needed = 0;
+    for (let i = 0; i < visual.items.length; i += columns) needed += Math.max(...visual.items.slice(i, i + columns).map(item => Math.ceil(item.length / lineChars))) * size * 1.35 + 64;
+    height = Math.max(height, needed);
+    content = <Items visual={visual} palette={palette} frame={frame} active={active} spacing={spacing} duration={duration}/>;
+  } else content = <Graph visual={visual} palette={palette} frame={frame} active={active} spacing={spacing} duration={duration}/>;
+  const scale = 480 / height;
+  return <div style={{position: 'absolute', left: (1696 - 1696 * scale) / 2, top: 0, width: 1696, height,
+    transform: `scale(${scale})`, transformOrigin: 'top left', display: 'flex', alignItems: 'center'}}>{content}</div>;
 };

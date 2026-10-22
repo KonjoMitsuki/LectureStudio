@@ -3,16 +3,17 @@ import re
 
 from jsonschema import Draft202012Validator
 
-from ..models import ContentPlan, Lecture
+from ..models import ContentPlan, PlanChunk, Lecture
 
 
 def normalized(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
-def validate_content_plan(raw: dict, document: dict) -> ContentPlan:
-    Draft202012Validator(ContentPlan.model_json_schema()).validate(raw)
-    plan = ContentPlan.model_validate(raw)
+def validate_content_plan(raw: dict, document: dict, *, allow_empty: bool = False) -> ContentPlan:
+    model = PlanChunk if allow_empty else ContentPlan
+    Draft202012Validator(model.model_json_schema()).validate(raw)
+    plan = model.model_validate(raw)
     pages = {page["number"]: page["text"] for page in document["pages"]}
     reviewed = {page.page: page for page in plan.pages}
     if len(reviewed) != len(plan.pages) or set(reviewed) != set(pages):

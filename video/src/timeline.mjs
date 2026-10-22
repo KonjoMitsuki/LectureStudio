@@ -24,17 +24,34 @@ export function visualRanges(props) {
     const duration = scene.duration_in_frames;
     const count = Math.max(visual.nodes.length, visual.items.length, visual.rows.length, 1);
     const spacing = Math.max(20, Math.min(60, Math.floor(duration * 0.35 / count)));
-    let animationEnd = 20;
-    if (['flowchart', 'state_diagram', 'block_diagram', 'network'].includes(visual.type)) {
-      animationEnd = Math.max(20, (visual.nodes.length - 1) * spacing + 20,
-        visual.edges.length ? 10 + (visual.edges.length - 1) * spacing + 20 : 0);
-    } else if (['timeline', 'keywords'].includes(visual.type)) {
-      animationEnd = (visual.items.length - 1) * spacing + 20;
-    } else if (visual.type === 'comparison') {
-      animationEnd = (visual.rows.length - 1) * spacing + 20;
-    }
     const offset = scene.start_frame;
-    ranges.push([offset, offset + Math.min(duration - 1, animationEnd)]);
+    const interval = (start, end = start) => {
+      if (start < duration) ranges.push([offset + start, offset + Math.min(duration - 1, end)]);
+    };
+    interval(0, 12); // Scene header/footer opening fade.
+    if (!scene.animation) {
+      // Match each component's actual reveal time, including narration overrides.
+      // Static gaps between entrances require no browser frame captures.
+      if (['flowchart', 'state_diagram', 'block_diagram', 'network'].includes(visual.type)) {
+        visual.nodes.forEach((node, i) => {
+          const start = revealFrame(visual, duration, node.id, i * spacing);
+          interval(start, start + 20);
+        });
+        visual.edges.forEach((edge, i) => {
+          const start = revealFrame(visual, duration, edge.id, 10 + i * spacing);
+          interval(start, start + 20);
+        });
+      } else if (['timeline', 'keywords', 'comparison'].includes(visual.type)) {
+        const entries = visual.type === 'comparison' ? visual.rows : visual.items;
+        entries.forEach((_, i) => {
+          const start = revealFrame(visual, duration, String(i), i * spacing);
+          interval(start, start + 20);
+        });
+      } else interval(0, 20); // Formula opening fade.
+    }
+    for (const state of scene.animation?.states ?? []) {
+      if (state.at_frame < duration) ranges.push([offset + state.at_frame, offset + state.at_frame]);
+    }
     for (let i = 0; i < visual.steps.length; i++) {
       const frame = stepFrame(visual, duration, i);
       if (frame < duration) ranges.push([offset + frame, offset + Math.min(duration - 1, frame + (visual.steps[i].action === "reveal" ? 20 : 0))]);
@@ -72,9 +89,12 @@ export function ptsExpression(ranges) {
     const item = {offset: start - cumulative, end: cumulative + end - start + 1};
     cumulative = item.end; return item;
   });
-  let expression = 'N+' + entries.at(-1).offset;
-  for (let i = entries.length - 2; i >= 0; i--) {
-    expression = 'if(lt(N,' + entries[i].end + '),N+' + entries[i].offset + ',' + expression + ')';
-  }
-  return '(' + expression + ')/(30*TB)';
+  // A balanced expression avoids FFmpeg's parser nesting limit on long lectures.
+  const expression = (start, end) => {
+    if (end - start === 1) return 'N+' + entries[start].offset;
+    const middle = Math.floor((start + end) / 2);
+    return 'if(lt(N,' + entries[middle - 1].end + '),'
+      + expression(start, middle) + ',' + expression(middle, end) + ')';
+  };
+  return '(' + expression(0, entries.length) + ')/(30*TB)';
 }

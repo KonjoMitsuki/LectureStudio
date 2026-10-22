@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 
-test('実PDFをアップロードして日本語音声付き5〜10分のMP4を生成・再生・保存する', async ({page, request}) => {
+test('実PDFをアップロードして全項目を扱う日本語音声付きMP4を生成・再生・保存する', async ({page, request}) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   const health = await request.get('/api/health');
@@ -41,8 +41,14 @@ test('実PDFをアップロードして日本語音声付き5〜10分のMP4を�
   }, {timeout: 7100_000, intervals: [1500, 3000, 5000]}).toBe('completed');
   await expect(page.getByRole('link', {name: 'MP4を保存', exact: false})).toBeVisible({timeout: 30_000});
   const final = await (await request.get(`/api/projects/${project.id}`)).json();
-  expect(final.seconds).toBeGreaterThanOrEqual(300);
-  expect(final.seconds).toBeLessThanOrEqual(600);
+  expect(final.seconds).toBeGreaterThan(0);
+  const script = await (await request.get(`/api/projects/${project.id}/lecture`)).json();
+  expect(script.coverage.length).toBeGreaterThan(0);
+  for (const item of script.coverage) {
+    const scene = script.scenes.find((value: {id: string}) => value.id === item.scene_id);
+    expect(scene.kind).toBe('lecture');
+    expect(scene.narration).toContain(item.narration_excerpt);
+  }
   expect(final.chapters.length).toBeGreaterThanOrEqual(6);
   const video = page.getByLabel('生成した講義動画');
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1);

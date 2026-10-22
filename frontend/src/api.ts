@@ -11,6 +11,8 @@ export type Diagnostics = {
     running: boolean; task: string; completed_stages: string[]; elapsed_seconds: number; stage_elapsed_seconds: number;
     heartbeat_at: string; heartbeat_age_seconds: number; activity_age_seconds: number; output_age_seconds: number | null;
     process_elapsed_seconds: number | null;
+    ai?: {phase: string; completed: number; total: number; event_count: number; last_event?: string;
+      calls: number; usage: {input_tokens?: number; cached_input_tokens?: number; output_tokens?: number}} | null;
     process: {alive: boolean; status: string; timeout_seconds: number} | null;
   } | null;
   events: GenerationEvent[]; has_more: boolean;

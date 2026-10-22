@@ -31,9 +31,32 @@ class GenerationLog:
         self.store, self.project_id = store, project_id
         self.process = None
         self.started = self.stage_started = monotonic()
+        self.last_event_save = 0.0
         self.state = {"job_id": job_id, "stage": "queued", "task": "生成の開始を待っています",
             "started_at": now(), "stage_started_at": now(), "heartbeat_at": now(),
-            "last_activity_at": now(), "completed_stages": [], "process": None}
+            "last_activity_at": now(), "completed_stages": [], "process": None, "ai": None}
+
+    def ai_progress(self, phase: str, completed: int, total: int):
+        ai = self.state.get("ai") or {"event_count": 0, "usage": {}, "calls": 0}
+        ai.update(phase=phase, completed=completed, total=total)
+        self.state["ai"] = ai
+        self.store.save_activity(self.project_id, self.state)
+
+    def ai_event(self, event: dict):
+        ai = self.state.get("ai") or {"phase": "generation", "completed": 0, "total": 1,
+            "event_count": 0, "usage": {}, "calls": 0}
+        ai.update(event_count=ai["event_count"] + 1, last_event=event["type"], last_event_at=now())
+        if event["type"] == "turn.started":
+            ai["calls"] += 1
+        if event["type"] == "turn.completed" and event.get("usage"):
+            for key, value in event["usage"].items():
+                ai["usage"][key] = ai["usage"].get(key, 0) + value
+        self.state["ai"] = ai
+        self.state["last_activity_at"] = now()
+        # Persist terminal events immediately, throttle frequent item updates.
+        if monotonic() - self.last_event_save >= 1 or event["type"] in {"turn.started", "turn.completed", "turn.failed", "error"}:
+            self.store.save_activity(self.project_id, self.state)
+            self.last_event_save = monotonic()
 
     def emit(self, message: str, *, level: str = "info", details: list[str] | None = None, task: bool = False):
         timestamp = now()
@@ -69,16 +92,17 @@ class GenerationLog:
     def process_started(self, process, timeout: float):
         self.process = process
         self.state["process"] = {"pid": process.pid, "started_at": now(), "last_output_at": None,
-            "timeout_seconds": timeout, "status": "running", "alive": True}
+            "timeout_seconds": timeout, "status": "running", "alive": True, "output_bytes": 0}
         self.emit(f"外部の生成処理を起動しました（待機上限：{duration(timeout)}）")
 
-    def process_output(self):
+    def process_output(self, size: int = 0):
         if self.state["process"]:
             self.state["process"]["last_output_at"] = now()
+            self.state["process"]["output_bytes"] += size
 
     def process_finished(self, status: str, code: int | None):
         if self.state["process"]:
-            self.state["process"].update(status=status, exit_code=code, alive=False)
+            self.state["process"].update(status=status, exit_code=code, alive=False, finished_at=now())
         messages = {"completed": "外部の処理が終了しました", "failed": "外部の処理がエラーで終了しました",
             "timeout": "待機上限に達したため、外部の処理を停止しました", "cancelled": "外部の処理を中断しました"}
         self.emit(messages[status], level="info" if status == "completed" else "warning",
@@ -100,7 +124,8 @@ def activity_snapshot(activity: dict | None, row: dict, latest_job: dict | None)
         "stage_elapsed_seconds": max(0, (end - datetime.fromisoformat(activity["stage_started_at"])).total_seconds()),
         "heartbeat_age_seconds": age(activity["heartbeat_at"]),
         "activity_age_seconds": age(activity["last_activity_at"]),
-        "process_elapsed_seconds": age(process["started_at"]) if process else None,
+        "process_elapsed_seconds": max(0, ((datetime.fromisoformat(process["finished_at"]) if process.get("finished_at") else end)
+            - datetime.fromisoformat(process["started_at"])).total_seconds()) if process else None,
         "output_age_seconds": age(process["last_output_at"]) if process else None}
 
 

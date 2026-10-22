@@ -103,3 +103,15 @@ async def test_failed_turn_never_accepts_output_even_with_zero_exit_code(tmp_pat
     monkeypatch.setattr(ai_analyzer, "run_process", fake_process)
     with pytest.raises(RuntimeError, match="利用制限"):
         await ai_analyzer.CodexCLIAnalyzer()._generate(Lecture, lambda raw: raw, "prompt", tmp_path)
+
+
+async def test_oversized_final_file_preserves_safe_failure_reason(tmp_path, monkeypatch):
+    async def process(command, **kwargs):
+        output = Path(command[command.index('--output-last-message') + 1])
+        with output.open('wb') as file:
+            file.truncate(8 * 1024 * 1024 + 1)
+        return 0, '', ''
+    monkeypatch.setattr(ai_analyzer, 'run_process', process)
+    with pytest.raises(ai_analyzer.RetryableGenerationError, match='出力上限'):
+        await ai_analyzer.CodexCLIAnalyzer()._generate(Lecture, lambda value: value, 'private', tmp_path)
+    assert json.loads((tmp_path / 'failure.json').read_text()) == {'category': '出力上限', 'reason': 'output_limit'}

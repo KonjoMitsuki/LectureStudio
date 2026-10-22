@@ -7,6 +7,8 @@ from ..config import ROOT, settings
 from .process import run_process
 from .captions import build_captions
 from .diagnostics import duration, record
+from .manim_service import render_manim, timed_animation
+from .checkpoints import save_json
 
 
 async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Path, on_progress=None) -> dict:
@@ -15,6 +17,7 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
     public.mkdir(exist_ok=True)
     scenes = []
     offset = 0
+    render_report = []
     for scene, sound in zip(lecture["scenes"], audio, strict=True):
         name = f"{scene['id']}.wav"
         shutil.copyfile(sound["path"], public / name)
@@ -26,15 +29,35 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
             if step.get("cue"):
                 position = scene["narration"].index(step["cue"], position)
                 step["at_frame"] = round(position / len(scene["narration"]) * sound["audio_seconds"] * 30)
+        animation = timed_animation(scene, sound['audio_seconds'])
+        manim_src = None
+        frames = sound['duration_in_frames'] + scene.get('thinking_seconds', 0) * 30
+        fallback_reason = None
+        if scene.get('renderer') == 'manim' and animation:
+            record(f"Manimの固定テンプレートを描画しています：{len(scenes) + 1}/{len(lecture['scenes'])}", task=True)
+            try:
+                clip = await render_manim(animation, frames, style, workdir)
+                manim_src = f"{scene['id']}.mp4"
+                shutil.copyfile(clip, public / manim_src)
+            except (RuntimeError, ValueError, OSError):
+                fallback_reason = 'manim_unavailable_or_invalid'
+                record("Manim映像を使用できないため、このシーンをRemotionの固定図解で描画します", level="warning")
+        render_report.append({'scene_id': scene['id'], 'requested': scene.get('renderer', 'remotion'),
+            'actual': 'manim' if manim_src else 'remotion', 'fallback_reason': fallback_reason,
+            'frames': frames, 'viewport': {'x': 112, 'y': 300, 'width': 1696, 'height': 480},
+            'caption_top': 816})
         scenes.append({**scene, "visual": visual, "audio_src": name, "audio_seconds": sound["audio_seconds"],
+            'animation': animation, 'manim_src': manim_src,
             "captions": build_captions(scene["narration"], sound["audio_seconds"]),
             "thinking_start_frame": sound["duration_in_frames"],
             "duration_in_frames": sound["duration_in_frames"] + scene.get("thinking_seconds", 0) * 30, "start_frame": offset})
         offset += scenes[-1]["duration_in_frames"]
     props = {"title": lecture["title"], "scenes": scenes, "style": style, "duration_in_frames": offset}
+    save_json(workdir / 'render_report.json', render_report)
     props_path = workdir / "render_props.json"
     props_path.write_text(json.dumps(props, ensure_ascii=False))
     output = workdir / "video.partial.mp4"
+    output.unlink(missing_ok=True)
     record(f"動画の配置ができました：{len(scenes)}シーン・{duration(offset / 30)}", level="success",
         details=["映像：1920×1080 / 1秒あたり30コマ", "保存先：render_props.json（図解・字幕・音声の配置）"])
 
@@ -50,15 +73,29 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
                     "encode": "映像と音声を結合して、MP4に保存しています"}
                 if message := messages.get(event.get("phase")):
                     record(message, task=True)
-            elif event.get("type") == "progress" and on_progress:
+            elif event.get("type") == "progress" and on_progress and type(event.get('progress')) in {int, float} and 0 <= event['progress'] <= 1:
                 on_progress(event["progress"])
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
     # Line-buffered writes preserve progress and errors on timeout/interruption.
     with (workdir / "render.log").open("w", encoding="utf-8", buffering=1) as log:
+        stderr_seen = False
+        def stderr_line(line):
+            nonlocal stderr_seen
+            if not stderr_seen:
+                log.write('外部描画処理から診断出力を受信しました（本文は保存しません）。\n')
+                stderr_seen = True
         def output_line(line):
-            log.write(line)
+            # Rendering failures may echo props or source text; persist metadata only.
+            try:
+                event = json.loads(line)
+                if event.get('type') == 'phase' and event.get('phase') in {'browser', 'bundle', 'composition', 'frames', 'encode'}:
+                    log.write(json.dumps({'type': 'phase', 'phase': event['phase']}) + '\n')
+                elif event.get('type') == 'progress' and type(event.get('progress')) in {int, float} and 0 <= event['progress'] <= 1:
+                    log.write(json.dumps({'type': 'progress', 'progress': event['progress']}) + '\n')
+            except (ValueError, AttributeError):
+                pass
             line_callback(line)
         try:
             env = os.environ.copy()
@@ -66,7 +103,7 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
                 env["LECTURE_CHROMIUM_PATH"] = settings.chromium_path
             code, out, err = await run_process(["node", str(ROOT / "video/render.mjs"), str(props_path),
                 str(public), str(output), str(settings.render_concurrency)], cwd=ROOT / "video",
-                timeout=settings.render_timeout, on_line=output_line, on_stderr=log.write, env=env)
+                timeout=settings.render_timeout, on_line=output_line, on_stderr=stderr_line, env=env, capture_output=False)
         except asyncio.TimeoutError as exc:
             log.write("\n待機上限に達したため停止しました。\n")
             raise RuntimeError(f"動画の書き出しが待機上限の{duration(settings.render_timeout)}に達しました。"

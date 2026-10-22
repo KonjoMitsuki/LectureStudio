@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test';
 
-test('処理の記録で稼働確認・内容の抜粋・以前の失敗を読める', async ({page}) => {
+test('処理の記録で稼働確認・使用量・分割進捗・以前の失敗を読める', async ({page}) => {
   const id = 'a'.repeat(32), latest = 'b'.repeat(32), previous = 'c'.repeat(32);
   const now = new Date().toISOString();
   const project = {id, title: '探索の講義', filename: 'lecture.pdf', created_at: now, status: 'running', stage: 'ai',
@@ -10,9 +10,10 @@ test('処理の記録で稼働確認・内容の抜粋・以前の失敗を読�
     {id: previous, created_at: now, status: 'failed', stage: 'ai', error: '待機上限に達しました'}];
   const activity = {running: true, task: 'AIの台本作成の応答を待っています', completed_stages: ['pdf'], elapsed_seconds: 300,
     stage_elapsed_seconds: 290, heartbeat_at: now, heartbeat_age_seconds: 2, activity_age_seconds: 120,
-    output_age_seconds: 90, process_elapsed_seconds: 280, process: {alive: true, status: 'running', timeout_seconds: 900}};
-  const events = [{id: 1, created_at: now, stage: 'pdf', level: 'success', message: 'PDFを読み取れました', details: ['p.1：探索アルゴリズム']},
-    {id: 2, created_at: now, stage: 'ai', level: 'success', message: '解説項目の一覧ができました：8項目', details: ['項目1：線形探索', '項目2：二分探索']},
+    output_age_seconds: 90, process_elapsed_seconds: 280, process: {alive: true, status: 'running', timeout_seconds: 900},
+    ai: {phase: 'chapters', completed: 2, total: 8, event_count: 12, calls: 3, usage: {input_tokens: 3200, output_tokens: 1400, cached_input_tokens: 500}}};
+  const events = [{id: 1, created_at: now, stage: 'pdf', level: 'success', message: 'PDFを読み取れました', details: ['4ページ']},
+    {id: 2, created_at: now, stage: 'ai', level: 'success', message: '解説項目の一覧ができました：8項目', details: ['保存先：ai/content_plan.json']},
     {id: 3, created_at: now, stage: 'ai', level: 'info', message: 'AIに台本の作成を依頼します', details: []}];
   let disconnected = false;
   await page.route('**/api/**', async route => {
@@ -38,7 +39,9 @@ test('処理の記録で稼働確認・内容の抜粋・以前の失敗を読�
   await expect(page.getByText('最後の進捗更新：2分0秒前')).toBeVisible();
   await expect(page.getByText('外部の生成処理：', {exact: false})).toContainText('待機上限 15分0秒');
   await page.locator('.generation-events li').filter({hasText: '解説項目の一覧ができました'}).getByText('内容を見る').click();
-  await expect(page.getByText('項目1：線形探索')).toBeVisible();
+  await expect(page.getByText('保存先：ai/content_plan.json')).toBeVisible();
+  await expect(page.getByText('章・トピックの台本：2/8 完了 · 受信イベント 12件')).toBeVisible();
+  await expect(page.getByText('報告済みトークン：', {exact: false})).toContainText('入力 3,200 / 出力 1,400');
   await page.getByText('保存済みの生成物を見る', {exact: false}).click();
   await expect(page.getByRole('link', {name: '台本の全文を読む', exact: false})).toHaveAttribute('href', `/api/projects/${id}/transcript`);
   await expect(page.getByRole('link', {name: '全記録を保存', exact: false})).toHaveAttribute('href', `/api/projects/${id}/logs?download=true`);

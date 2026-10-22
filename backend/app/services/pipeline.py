@@ -6,7 +6,7 @@ from pathlib import Path
 from time import monotonic
 import httpx
 from jsonschema import ValidationError
-from ..config import settings
+from ..config import ROOT, settings
 from ..models import GenerationSettings, validate_lecture
 from ..storage import Store
 from .ai_analyzer import CodexCLIAnalyzer
@@ -14,7 +14,8 @@ from .coverage import validate_content_plan, validate_coverage
 from .pdf_parser import parse_pdf
 from .voicevox import Voicevox
 from .render_service import render_video
-from .diagnostics import GenerationLog, current_log, duration, excerpt
+from .diagnostics import GenerationLog, current_log, duration
+from .checkpoints import GENERATION_VERSION, source_data
 
 
 def save_json(path: Path, value: dict | list):
@@ -95,10 +96,11 @@ class Pipeline:
                 save_json(document_path, document)
             self.store.update(project_id, page_count=document["page_count"], warnings=document["warnings"])
             log.finish_stage(f"PDFを読み取れました：{document['page_count']}ページ・{sum(len(p['text']) for p in document['pages']):,}文字",
-                [f"p.{p['number']}：{excerpt(' / '.join(p.get('headings', [])) or p['text'])}" for p in document["pages"][:3]]
-                + [f"確認事項：{len(document['warnings'])}件 / 保存先：document.json・pages/"])
+                [f"確認事項：{len(document['warnings'])}件 / 保存先：document.json・pages/"])
             step("ai")
-            fingerprint = hashlib.sha256(json.dumps({"settings": options.model_dump(), "visual_script_version": 4}, sort_keys=True).encode()).hexdigest()
+            fingerprint = hashlib.sha256(json.dumps({"settings": options.model_dump(),
+                "visual_script_version": GENERATION_VERSION, "source": source_data(document),
+                "prompts": [(ROOT / f"prompts/{name}.txt").read_text() for name in ("plan", "analyze")]}, sort_keys=True).encode()).hexdigest()
             script = workdir / "lecture.json"
             marker = workdir / "settings.sha256"
             lecture = None
@@ -122,23 +124,14 @@ class Pipeline:
             self.store.update(project_id, title=lecture.title, warnings=warnings)
             self.store.save_scenes(project_id, [s.model_dump() for s in lecture.scenes])
             log.finish_stage(f"構成・台本が完成しました：{len(lecture.scenes)}シーン",
-                [f"タイトル：{lecture.title}", f"学習内容：{' / '.join(lecture.learning_goals)}"]
-                + [f"シーン{i + 1}「{s.title}」：{excerpt(s.narration)}" for i, s in enumerate(lecture.scenes[:3])]
-                + ["台本全文：lecture.json（画面の「台本の全文」から確認できます）"])
+                ["台本全文：lecture.json（画面の「台本の全文」から確認できます）"])
             step("audio", 0)
             log.emit("音声を作るサービスに接続しています", task=True)
             speakers = await self.voice.speakers()
             if options.speaker not in {s["id"] for speaker in speakers for s in speaker["styles"]}:
                 raise ValueError("選択したVOICEVOX話者が存在しません")
             log.emit("音声サービスへの接続と、選択した話者を確認できました", level="success")
-            audio = []
-            for i, scene in enumerate(lecture.scenes):
-                log.emit(f"音声を作成中：{i + 1}/{len(lecture.scenes)}「{scene.title}」", task=True)
-                item = await self.voice.synthesize(scene.narration, options.speaker, options.speed, self.store.root / "audio")
-                audio.append(item)
-                self.store.save_audio(project_id, scene.id, item)
-                self.store.update(project_id, progress=(i + 1) / len(lecture.scenes))
-                log.emit(f"音声ができました：{i + 1}/{len(lecture.scenes)}（{duration(item['audio_seconds'])}）", level="success")
+            audio = await self.synthesize_scenes(lecture, options, project_id, log)
             save_json(workdir / "audio.json", audio)
             actual_seconds = sum(a["duration_in_frames"] for a in audio) / 30 + sum(s.thinking_seconds for s in lecture.scenes)
             minimum, maximum = {"test": (40, 100), "short": (300, 600), "medium": (900, 1200), "long": (1800, 2400)}[options.duration]
@@ -187,7 +180,9 @@ class Pipeline:
                 message = ("音声サービスの応答が時間内に届きませんでした。ENGINEの状態を確認し、再試行してください"
                     if isinstance(exc, httpx.TimeoutException) else
                     "VOICEVOXに接続または音声合成できません。ENGINEの起動と話者を確認してください")
-            elif isinstance(exc, (ValueError, RuntimeError)):
+            elif isinstance(exc, ValueError):
+                message = f"{stage}工程のデータ検証に失敗しました。保存済み成果物を確認して再試行してください"
+            elif isinstance(exc, RuntimeError):
                 message = str(exc)[:400]
             else:
                 message = f"{stage}工程で{type(exc).__name__}が発生しました。保存済みの診断情報を確認してください"
@@ -201,3 +196,34 @@ class Pipeline:
             with suppress(asyncio.CancelledError):
                 await heartbeat
             current_log.reset(token)
+
+    async def synthesize_scenes(self, lecture, options, project_id, log):
+        semaphore = asyncio.Semaphore(settings.voice_concurrency)
+        completed = 0
+        async def synthesize(index, scene):
+            async with semaphore:
+                log.emit(f"音声を作成中：シーン{index + 1}/{len(lecture.scenes)}", task=True)
+                return await self.voice.synthesize(scene.narration, options.speaker, options.speed, self.store.root / 'audio')
+        # Identical text shares a task, preventing concurrent writes to one cache file.
+        unique = {}
+        for i, scene in enumerate(lecture.scenes):
+            if scene.narration not in unique:
+                unique[scene.narration] = asyncio.create_task(synthesize(i, scene))
+        async def collect(scene):
+            nonlocal completed
+            item = await unique[scene.narration]
+            self.store.save_audio(project_id, scene.id, item)
+            completed += 1
+            self.store.update(project_id, progress=completed / len(lecture.scenes))
+            log.emit(f"音声ができました：{completed}/{len(lecture.scenes)}（{duration(item['audio_seconds'])}）", level='success')
+            return item
+        consumers = [asyncio.create_task(collect(scene)) for scene in lecture.scenes]
+        tasks = [*unique.values(), *consumers]
+        try:
+            # gather returns source order even when synthesis finishes out of order.
+            return await asyncio.gather(*consumers)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)

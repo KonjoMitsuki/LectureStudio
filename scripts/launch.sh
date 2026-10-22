@@ -52,7 +52,7 @@ if ! curl --silent --fail --max-time 1 "${LECTURE_VOICEVOX_URL%/}/version" >/dev
   mkdir -p "$LECTURE_ROOT/tools/voicevox/state"
   echo "VOICEVOX ENGINEを起動しています..."
   XDG_DATA_HOME="$LECTURE_ROOT/tools/voicevox/state" "$LECTURE_ENGINE" \
-    --host 127.0.0.1 --cpu_num_threads 2 --disable_mutable_api &
+    --host 127.0.0.1 --cpu_num_threads 2 --disable_mutable_api > /dev/null 2>&1 &
   LECTURE_ENGINE_PID=$!
   for _ in $(seq 1 90); do
     if curl --silent --fail --max-time 1 "${LECTURE_VOICEVOX_URL%/}/version" >/dev/null 2>&1; then

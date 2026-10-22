@@ -81,7 +81,7 @@ async def test_render_log_is_flushed_before_timeout(tmp_path, monkeypatch, valid
         await render_service.render_video(valid_lecture,
             [{'path': str(audio), 'audio_seconds': 5, 'duration_in_frames': 165}], 'motion', tmp_path)
     text = (tmp_path / 'render.log').read_text()
-    assert 'frames' in text and 'render started' in text and '待機上限に達した' in text
+    assert 'frames' in text and 'render started' not in text and '待機上限に達した' in text
 
 
 def test_snapshot_distinguishes_old_progress_from_fresh_worker_heartbeat(log):
@@ -125,3 +125,33 @@ async def test_cancellation_marks_the_job_failed_and_keeps_logs(log):
     event = log.store.events(log.project_id, log.state['job_id'])[-1]
     assert event['level'] == 'error' and event['stage'] == 'ai'
     assert '中断' in event['message']
+
+
+async def test_usage_is_persisted_live_without_text_or_invalid_values(tmp_path, monkeypatch, log, valid_lecture):
+    private = 'PRIVATE_PDF_TEXT_AND_SCRIPT'
+    observed = []
+    async def process(command, **kwargs):
+        for event in [
+            {'type': 'turn.started', 'message': private},
+            {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': private}},
+            {'type': 'turn.completed', 'usage': {'input_tokens': 20, 'output_tokens': 8,
+                'cached_input_tokens': 5, 'secret': private}},
+        ]:
+            kwargs['on_line'](json.dumps(event))
+        observed.append(log.store.activity(log.project_id)['ai'])
+        from pathlib import Path
+        Path(command[command.index('--output-last-message') + 1]).write_text(json.dumps(valid_lecture))
+        return 0, '', ''
+    monkeypatch.setattr(ai_analyzer, 'run_process', process)
+    token = current_log.set(log)
+    try:
+        await ai_analyzer.CodexCLIAnalyzer()._generate(Lecture, Lecture.model_validate, private, tmp_path)
+    finally:
+        current_log.reset(token)
+    assert observed[0]['usage'] == {'input_tokens': 20, 'output_tokens': 8, 'cached_input_tokens': 5}
+    assert observed[0]['event_count'] == 3 and observed[0]['calls'] == 1
+    assert any('入力トークン：20' in event['details'] for event in log.store.events(log.project_id, log.state['job_id']))
+    assert private not in json.dumps(log.store.activity(log.project_id))
+    assert private not in (tmp_path / 'events_0.jsonl').read_text()
+    assert ai_analyzer.safe_event({'type': private, 'usage': {'input_tokens': -1, 'output_tokens': True}}) == {
+        'type': 'other', 'item_type': None, 'usage': {}}

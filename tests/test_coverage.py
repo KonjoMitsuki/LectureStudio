@@ -108,6 +108,7 @@ def test_coverage_rejects_cosmetic_page_refs_and_unexplained_topics(document, ra
 
 
 async def test_analyzer_plans_first_and_retries_omitted_later_topic(tmp_path, monkeypatch, document, raw_plan, valid_lecture):
+    monkeypatch.setattr(ai_analyzer.settings, 'plan_chunk_pages', 20)
     prompts = []
     script_attempts = 0
 
@@ -144,7 +145,7 @@ async def test_analyzer_plans_first_and_retries_omitted_later_topic(tmp_path, mo
     # Retry/restart uses the same independent plan, never a newly shortened topic list.
     prompts.clear()
     await ai_analyzer.CodexCLIAnalyzer().analyze(document, GenerationSettings(duration='test'), workdir)
-    assert len(prompts) == 1 and 'SOURCE_PLAN=' in prompts[0]
+    assert prompts == []  # Independently validated plan and chapter are both reusable.
 
 
 def test_embedded_images_are_reported_as_unverified(document, raw_plan):
@@ -154,6 +155,7 @@ def test_embedded_images_are_reported_as_unverified(document, raw_plan):
 
 
 async def test_repeated_omission_fails_instead_of_shortening_independent_plan(tmp_path, monkeypatch, document, raw_plan, valid_lecture):
+    monkeypatch.setattr(ai_analyzer.settings, 'plan_chunk_pages', 20)
     calls = []
 
     async def fake_process(command, **kwargs):
@@ -171,6 +173,7 @@ async def test_repeated_omission_fails_instead_of_shortening_independent_plan(tm
     workdir = tmp_path / 'ai'
     with pytest.raises(ValueError, match='網羅性検証'):
         await ai_analyzer.CodexCLIAnalyzer().analyze(document, GenerationSettings(duration='test'), workdir)
-    assert calls == ['plan_answer_0.json', 'answer_0.json', 'answer_1.json']
+    assert calls[:3] == ['plan_answer_0.json', 'answer_0.json', 'answer_1.json']
+    assert len(calls) == 5  # Failed parent is subdivided; bad child output still fails.
     assert len(json.loads((workdir / 'content_plan.json').read_text())['topics']) == 2
     assert not (tmp_path / 'coverage.json').exists()

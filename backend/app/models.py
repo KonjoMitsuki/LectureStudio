@@ -27,9 +27,13 @@ class ContentPlan(StrictModel):
     pages: list[PageReview] = Field(min_length=1, max_length=100)
 
 
+class PlanChunk(ContentPlan):
+    topics: list[SourceTopic] = Field(max_length=1200)
+
+
 class CoverageEntry(StrictModel):
     topic_id: str = Field(pattern=r"^topic_[0-9]{4}$")
-    scene_id: str = Field(pattern=r"^scene_[0-9]{3}$")
+    scene_id: str = Field(pattern=r"^scene_[0-9]{3,6}$")
     narration_excerpt: str = Field(min_length=10, max_length=400)
 
 
@@ -92,8 +96,72 @@ class Visual(StrictModel):
         return self
 
 
+class AnimationState(StrictModel):
+    values: list[float] = Field(default_factory=list, max_length=8)
+    highlight: list[str] = Field(default_factory=list, max_length=8)
+    label: str = Field(default="", max_length=80)
+    formula: str = Field(default="", max_length=160)
+    cue: str = Field(min_length=1, max_length=80)
+
+
+class Animation(StrictModel):
+    template: Literal["array", "tree", "graph", "formula", "complexity"]
+    nodes: list[Node] = Field(default_factory=list, max_length=6)
+    edges: list[Edge] = Field(default_factory=list, max_length=10)
+    states: list[AnimationState] = Field(min_length=1, max_length=24)
+    curves: list[Literal["constant", "log", "linear", "n_log_n", "quadratic", "cubic"]] = Field(default_factory=list, max_length=4)
+
+    @model_validator(mode="after")
+    def validate_template(self):
+        ids = {n.id for n in self.nodes}
+        if len(ids) != len(self.nodes) or len({e.id for e in self.edges}) != len(self.edges):
+            raise ValueError("アニメーションIDが重複しています")
+        if any(e.source not in ids or e.target not in ids or e.source == e.target for e in self.edges):
+            raise ValueError("アニメーションの辺の参照が不正です")
+        if any(abs(v) > 1_000_000 for s in self.states for v in s.values):
+            raise ValueError("配列の値が表示範囲を超えています")
+        if self.template == "array":
+            size = len(self.states[0].values)
+            if not size or any(len(s.values) != size for s in self.states):
+                raise ValueError("配列の各状態には同じ数の具体的な入力値が必要です")
+            targets = {str(i) for i in range(size)}
+        elif self.template in {"tree", "graph"}:
+            if not ids:
+                raise ValueError("木・グラフにはノードが必要です")
+            targets = ids | {e.id for e in self.edges}
+            if self.template == "tree":
+                parents = {node: 0 for node in ids}
+                children = {node: [] for node in ids}
+                for edge in self.edges:
+                    parents[edge.target] += 1
+                    children[edge.source].append(edge.target)
+                roots = [node for node in ids if parents[node] == 0]
+                if len(roots) != 1 or any(v > 1 for v in parents.values()):
+                    raise ValueError("木には一つの根と一意な親が必要です")
+                seen, pending = set(), roots[:]
+                while pending:
+                    node = pending.pop()
+                    if node in seen:
+                        raise ValueError("木に循環があります")
+                    seen.add(node)
+                    pending.extend(children[node])
+                if seen != ids:
+                    raise ValueError("木が連結していません")
+        elif self.template == "formula":
+            if any(not s.formula.strip() for s in self.states):
+                raise ValueError("数式の各変形状態が必要です")
+            targets = set()
+        else:
+            if not self.curves or len(set(self.curves)) != len(self.curves):
+                raise ValueError("計算量には重複のない定義済み曲線が必要です")
+            targets = set(self.curves)
+        if any(target not in targets for s in self.states for target in s.highlight):
+            raise ValueError("アニメーションの強調対象が存在しません")
+        return self
+
+
 class Scene(StrictModel):
-    id: str = Field(pattern=r"^scene_[0-9]{3}$")
+    id: str = Field(pattern=r"^scene_[0-9]{3,6}$")
     title: str = Field(min_length=1, max_length=40)
     narration: str = Field(min_length=1, max_length=1500)
     concepts: list[str] = Field(min_length=1, max_length=8)
@@ -103,13 +171,21 @@ class Scene(StrictModel):
     visual: Visual
     kind: Literal["lecture", "quiz", "quiz_answer"] = "lecture"
     thinking_seconds: int = Field(default=0, ge=0, le=10)
+    renderer: Literal["remotion", "manim"] = "remotion"
+    animation: Animation | None = None
+
+    @model_validator(mode="after")
+    def validate_renderer(self):
+        if self.renderer == "manim" and self.animation is None:
+            raise ValueError("Manimシーンには固定テンプレートの指定が必要です")
+        return self
 
 
 class Lecture(StrictModel):
     title: str = Field(min_length=1, max_length=80)
     learning_goals: list[str] = Field(min_length=1, max_length=8)
     warnings: list[str] = Field(max_length=12)
-    scenes: list[Scene] = Field(min_length=1, max_length=160)
+    scenes: list[Scene] = Field(min_length=1, max_length=12000)
     coverage: list[CoverageEntry] = Field(default_factory=list, max_length=1200)
 
     @model_validator(mode="after")
@@ -161,6 +237,12 @@ def validate_lecture(raw: dict, page_numbers: list[int]) -> Lecture:
                 if position < 0:
                     raise ValueError("画面切り替えのcueはナレーション中の順序通りの原文にしてください")
                 last_position = position
+        last_position = -1
+        for state in scene.animation.states if scene.animation else []:
+            position = scene.narration.find(state.cue, max(0, last_position + 1))
+            if position < 0:
+                raise ValueError("アニメーションのcueはナレーションの出現順に指定してください")
+            last_position = position
         if any(phrase in scene.narration for phrase in ("資料によると", "資料により", "資料では", "資料によれば", "この資料では", "スライドによると", "スライドでは")):
             raise ValueError("ナレーションの出典前置きを省き、内容を直接説明してください")
     return result

@@ -202,7 +202,9 @@ def create_app(data_dir: Path | None = None, pipeline_factory=Pipeline) -> FastA
             "render_props.json": "図解・字幕・音声の配置", "render.log": "動画書き出しの詳しい記録（途中経過を含む）",
             "video.mp4": "完成した動画", "video.partial.mp4": "書き出し途中の動画（完成前）",
             "video_metadata.json": "動画の長さ・映像・音声の検査情報", "error.json": "前回失敗した工程と原因",
-            "ai/content_plan.json": "AIが整理した解説項目の一覧"}
+            "ai/content_plan.json": "AIが整理した解説項目の一覧", "ai/chapters.json": "分割生成の完了数と再試行位置",
+            "render_report.json": "シーン別の描画方式・フォールバック・字幕領域の検証情報"}
+        descriptions['frame_cache.json'] = '保存済みRemotionフレームの検証・再利用数'
         summaries = [{"name": name, "description": description, "bytes": (directory / name).stat().st_size}
             for name, description in descriptions.items() if (directory / name).is_file()]
         events = store.events(project_id, selected["id"], 121) if selected else []
@@ -231,7 +233,9 @@ def create_app(data_dir: Path | None = None, pipeline_factory=Pipeline) -> FastA
         lecture = json.loads(path.read_text())
         lines = [lecture["title"], "", "学習内容", *[f"・{goal}" for goal in lecture["learning_goals"]], ""]
         for i, scene in enumerate(lecture["scenes"], 1):
-            lines.extend([f"{i}. {scene['title']}", f"参照ページ：{', '.join(map(str, scene['source_pages'])) or '補足説明'}",
+            lines.extend([f"{i}. {scene['title']}",
+                "区分：AIによる補足" if scene.get('supplemental') else "区分：元資料の説明",
+                f"参照ページ：{', '.join(map(str, scene['source_pages'])) or '補足説明'}",
                 scene["narration"], ""])
         return PlainTextResponse("\n".join(lines), headers={"Cache-Control": "no-store"})
 

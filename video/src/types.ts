@@ -6,10 +6,17 @@ export type Visual = {
   steps: {action: 'reveal' | 'highlight_node' | 'highlight_edge' | 'highlight_item'; target: string; cue?: string; at_frame?: number}[];
 };
 export type Caption = {text: string; start_frame: number; end_frame: number};
+export type Animation = {
+  template: 'array' | 'tree' | 'graph' | 'formula' | 'complexity';
+  nodes: Visual['nodes']; edges: Visual['edges']; curves: string[];
+  positions?: Record<string, [number, number]>;
+  states: {values: number[]; highlight: string[]; label: string; formula: string; cue: string; at_frame: number}[];
+};
 export type Scene = {
   id: string; title: string; narration: string; concepts: string[]; source_pages: number[];
   kind?: 'lecture' | 'quiz' | 'quiz_answer'; thinking_seconds?: number; thinking_start_frame?: number;
   captions?: Caption[];
+  renderer?: 'remotion' | 'manim'; animation?: Animation | null; manim_src?: string | null;
   supplemental: boolean; visual: Visual; audio_src: string; audio_seconds: number;
   duration_in_frames: number; start_frame: number;
 };

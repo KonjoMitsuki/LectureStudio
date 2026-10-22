@@ -2,6 +2,7 @@ import React from 'react';
 import {AbsoluteFill, Html5Audio, Sequence, interpolate, staticFile, useCurrentFrame} from 'remotion';
 import {captionAt, thinkingRemaining} from './timeline.mjs';
 import {Diagram} from './diagrams/Diagram';
+import {TemplateDiagram} from './diagrams/TemplateDiagram';
 import {palettes, type LectureProps, type Scene} from './types';
 
 const SceneView: React.FC<{scene: Scene; style: LectureProps['style']; index: number; total: number}> = ({scene, style, index, total}) => {
@@ -16,11 +17,13 @@ const SceneView: React.FC<{scene: Scene; style: LectureProps['style']; index: nu
       <div style={{display: 'flex', justifyContent: 'space-between', color: palette.muted, fontSize: 27, letterSpacing: 2}}><span style={{color: scene.kind === 'quiz' ? palette.accent : palette.muted}}>{label}</span><span>{String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</span></div>
       <h1 style={{fontSize: scene.title.length > 22 ? 58 : 72, fontWeight: 750, margin: '24px 0 10px', lineHeight: 1.2}}>{scene.title}</h1>
       <div style={{width: 100, height: 6, background: palette.accent, marginTop: 16}}/>
-      <div style={{flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', padding: '16px 0'}}><Diagram visual={scene.visual} palette={palette} duration={scene.duration_in_frames} allowHighlight={scene.kind !== 'quiz'}/></div>
-      <div style={{height: 140, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '12px 0'}}>
+      <div style={{position: 'absolute', left: 112, top: 300, width: 1696, height: 480, overflow: 'hidden', display: 'flex', alignItems: 'center'}}>
+        {scene.animation ? <TemplateDiagram animation={scene.animation} palette={palette}/> : <Diagram visual={scene.visual} palette={palette} duration={scene.duration_in_frames} allowHighlight={scene.kind !== 'quiz'}/>}
+      </div>
+      <div style={{position: 'absolute', left: 112, top: 816, width: 1696, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         {remaining > 0 ? <div style={{fontSize: 44, color: palette.accent, fontWeight: 700}}>考えてみましょう · あと{remaining}秒</div> : caption ? <div style={{maxWidth: 1440, padding: '16px 32px', borderRadius: 16, background: '#09111eee', color: '#ffffff', fontSize: 44, lineHeight: 1.35, textAlign: 'center', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{caption.text.replace(/\s+/g, ' ')}</div> : null}
       </div>
-      <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 27, color: palette.muted, gap: 30}}><span>{scene.concepts.join(' · ')}</span><span>{scene.supplemental ? '補足説明 · ' : ''}{scene.source_pages.length ? `資料 p.${scene.source_pages.join(', ')}` : '資料外の補足'}</span></div>
+      <div style={{position: 'absolute', left: 112, bottom: 48, width: 1696, display: 'flex', justifyContent: 'space-between', fontSize: 27, color: palette.muted, gap: 30}}><span style={{maxWidth: 1100, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>{scene.concepts.join(' · ')}</span><span>{scene.supplemental ? 'AIによる補足 · ' : ''}{scene.source_pages.length ? `資料 p.${scene.source_pages.join(', ')}` : '資料外の補足'}</span></div>
     </div>
   </AbsoluteFill>;
 };

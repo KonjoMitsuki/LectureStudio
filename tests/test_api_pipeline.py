@@ -128,7 +128,9 @@ async def test_failure_recovery_keeps_validated_script_and_reuses_analyzer(tmp_p
     assert json.loads((workdir / 'error.json').read_text())['type'] == 'ConnectError'
     first_events = store.events(project['id'], first)
     assert first_events[-1]['level'] == 'error'
-    assert any('台本が完成' in event['message'] and '線形探索' in '\n'.join(event['details']) for event in first_events)
+    assert any('台本が完成' in event['message'] for event in first_events)
+    assert '線形探索' not in json.dumps(first_events, ensure_ascii=False)
+    assert valid_lecture['scenes'][0]['narration'] not in json.dumps(first_events, ensure_ascii=False)
     assert store.activity(project['id'])['completed_stages'] == ['pdf', 'ai']
     voice.fail = False
     second = store.enqueue(project['id'], project['settings'], 10)
@@ -202,6 +204,10 @@ async def test_readable_diagnostics_export_and_attempt_selection(client, pdf, va
     assert any(a['name'] == 'lecture.json' and a['bytes'] > 0 for a in result['artifact_summaries'])
     transcript = await client.get(base + '/transcript')
     assert '線形探索' in transcript.text and '先頭から順番に値を比較します。' in transcript.text
+    assert '区分：元資料の説明' in transcript.text
+    valid_lecture['scenes'][0]['supplemental'] = True
+    (store.directory(project_id) / 'lecture.json').write_text(json.dumps(valid_lecture, ensure_ascii=False))
+    assert '区分：AIによる補足' in (await client.get(base + '/transcript')).text
     exported = await client.get(base + '/logs?download=true')
     assert 'attachment' in exported.headers['content-disposition']
     assert '内容を確認中：0' in exported.text and 'AIの待機上限に達しました' in exported.text

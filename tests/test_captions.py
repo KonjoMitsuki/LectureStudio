@@ -116,6 +116,6 @@ async def test_analyzer_retries_missing_quiz_and_requests_duration_specific_coun
     lecture = await ai_analyzer.CodexCLIAnalyzer().analyze(
         {'pages': [{'number': 1, 'text': '探索の講義'}]}, GenerationSettings(duration='short'), tmp_path)
     assert len(prompts) == 3
-    assert '理解確認クイズは1問' in prompts[1]
+    assert 'この分割のクイズは1問' in prompts[1]
     assert lecture.scenes[0].kind == 'quiz'
     assert lecture.scenes[1].kind == 'quiz_answer'

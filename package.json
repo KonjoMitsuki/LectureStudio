@@ -5,7 +5,7 @@
   "scripts": {
     "start": "bash scripts/launch.sh",
     "test:e2e": "playwright test",
-    "test:unit": ".venv/bin/python -m pytest tests && node tests/timeline.test.mjs",
+    "test:unit": ".venv/bin/python -m pytest tests && node tests/timeline.test.mjs && node tests/frame-cache.test.mjs",
     "phase0": ".venv/bin/python scripts/phase0.py",
     "build": "npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev",

@@ -60,6 +60,8 @@ export function DiagnosticsPanel({project}: {project: Project}) {
       <strong>{live ? fresh ? 'バックグラウンド処理の稼働を確認できています' : '稼働確認の更新が止まっています。アプリの状態を確認してください' : jobLabels[selectedStatus] ?? '処理の記録'}</strong>
       <p>{activity.task}</p>
       <div className="activity-times"><span>開始から {elapsed(activity.elapsed_seconds)}</span><span>この工程 {elapsed(activity.stage_elapsed_seconds)}</span></div>
+      {activity.ai ? <div aria-live="polite"><p>{activity.ai.phase === 'plan' ? '解説項目の整理' : '章・トピックの台本'}：{activity.ai.completed}/{activity.ai.total} 完了 · 受信イベント {activity.ai.event_count}件</p>
+        <p>報告済みトークン：入力 {(activity.ai.usage.input_tokens ?? 0).toLocaleString('ja-JP')} / 出力 {(activity.ai.usage.output_tokens ?? 0).toLocaleString('ja-JP')} / キャッシュ {(activity.ai.usage.cached_input_tokens ?? 0).toLocaleString('ja-JP')}（使用量は応答完了時に更新）</p></div> : null}
       {live ? <>
         <p>最終稼働確認：{clock(activity.heartbeat_at)}（{elapsed(activity.heartbeat_age_seconds)}前・約15秒ごとに確認）</p>
         <p>最後の進捗更新：{elapsed(activity.activity_age_seconds)}前</p>
@@ -75,7 +77,7 @@ export function DiagnosticsPanel({project}: {project: Project}) {
       return <li key={item.id} className={done ? 'done' : failed ? 'failed' : running ? 'running' : ''}><span>{item.label}</span><strong>{text}</strong></li>;
     })}</ul>
     {data?.events.length ? <>
-      <p className="diagnostics-note">新しい記録から表示しています。生成内容の抜粋は「内容を見る」で確認できます。</p>
+      <p className="diagnostics-note">新しい記録から表示しています。本文・台本は記録せず、処理段階と件数を表示します。</p>
       <EventList events={data.events.slice(-6)}/>
       {data.events.length > 6 ? <details className="earlier-events"><summary>それ以前の記録を見る{data.has_more ? '（画面は最新120件まで・全件は保存できます）' : `（${data.events.length - 6}件）`}</summary><EventList events={data.events.slice(0, -6)}/></details> : null}
     </> : null}
