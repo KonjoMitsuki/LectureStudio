@@ -1,6 +1,7 @@
 # Lecture Studio
 
 コンピュータサイエンスの講義PDFを、初学者向けの日本語解説・図解アニメーション・字幕・VOICEVOXナレーション付きのMP4へ変換するローカルアプリです。Remotionを維持し、数式やアルゴリズム等にはManimの固定テンプレートも使用できます。
+新規生成は、内容に応じて文字・図形・矢印の配置と時間変化を設計する絵コンテ方式です。タイトル位置や図解の構図を固定せず、ナレーションに合わせて移動・拡大・消去・値の更新を描画します。既存の図解・Manim形式の保存済みデータも読み込めます。仕様と検証方法は [絵コンテ形式](docs/storyboard.md) を参照してください。
 仕様は [開発計画書](docs/PLAN.md)、実装状況は [TASKS](docs/TASKS.md)、過去の実測は [検証記録](docs/VALIDATION.md)、今回の検証は [分割生成・Manim検証](docs/VALIDATION-20261021.md) を参照してください。
 
 資料全体から先に解説項目を抽出し、各項目を台本の説明文と対応させて解説漏れを検証します。時間と解説レベルによって項目を削らず、必要なら指定の目安より動画を長くします。表紙等の解説対象外や文字を抽出できないページには理由を記録し、埋め込み画像のみの内容は網羅未確認として表示します。項目と説明箇所の対応はプロジェクトの `coverage.json` に保存します。
@@ -110,6 +111,7 @@ npm start
 .venv/bin/python -m pytest -q
 node tests/timeline.test.mjs
 node tests/frame-cache.test.mjs
+node tests/storyboard.test.mjs
 video/node_modules/.bin/tsc -p video/tsconfig.json
 # 起動済みの実アプリ・実ENGINEを使うブラウザE2E（5〜10分動画を実生成）
 PLAYWRIGHT_BROWSERS_PATH="$PWD/tools/playwright" npm run test:e2e

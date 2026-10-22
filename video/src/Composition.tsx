@@ -3,6 +3,7 @@ import {AbsoluteFill, Html5Audio, Sequence, interpolate, staticFile, useCurrentF
 import {captionAt, thinkingRemaining} from './timeline.mjs';
 import {Diagram} from './diagrams/Diagram';
 import {TemplateDiagram} from './diagrams/TemplateDiagram';
+import {StoryboardView} from './StoryboardView';
 import {palettes, type LectureProps, type Scene} from './types';
 
 const SceneView: React.FC<{scene: Scene; style: LectureProps['style']; index: number; total: number}> = ({scene, style, index, total}) => {
@@ -11,15 +12,19 @@ const SceneView: React.FC<{scene: Scene; style: LectureProps['style']; index: nu
   const caption = captionAt(scene.captions, frame);
   const remaining = thinkingRemaining(scene, frame);
   const label = scene.kind === 'quiz' ? '理解チェック' : scene.kind === 'quiz_answer' ? '正答と解説' : 'LECTURE STUDIO';
-  const opacity = interpolate(frame, [0, 12, scene.duration_in_frames - 10, scene.duration_in_frames - 1], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const opacity = scene.storyboard ? 1 : interpolate(frame, [0, 12, scene.duration_in_frames - 10, scene.duration_in_frames - 1], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   return <AbsoluteFill style={{backgroundColor: palette.bg, color: palette.fg, padding: '48px 112px', fontFamily: '"Droid Sans Fallback", "Noto Sans CJK JP", sans-serif'}}>
     <div style={{opacity, display: 'flex', flexDirection: 'column', height: '100%'}}>
       <div style={{display: 'flex', justifyContent: 'space-between', color: palette.muted, fontSize: 27, letterSpacing: 2}}><span style={{color: scene.kind === 'quiz' ? palette.accent : palette.muted}}>{label}</span><span>{String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}</span></div>
+      {scene.storyboard ? <div style={{position: 'absolute', left: 112, top: 112, width: 1696, height: 668}}>
+        <StoryboardView board={scene.storyboard} palette={palette}/>
+      </div> : <>
       <h1 style={{fontSize: scene.title.length > 22 ? 58 : 72, fontWeight: 750, margin: '24px 0 10px', lineHeight: 1.2}}>{scene.title}</h1>
       <div style={{width: 100, height: 6, background: palette.accent, marginTop: 16}}/>
       <div style={{position: 'absolute', left: 112, top: 300, width: 1696, height: 480, overflow: 'hidden', display: 'flex', alignItems: 'center'}}>
         {scene.animation ? <TemplateDiagram animation={scene.animation} palette={palette}/> : <Diagram visual={scene.visual} palette={palette} duration={scene.duration_in_frames} allowHighlight={scene.kind !== 'quiz'}/>}
       </div>
+      </>}
       <div style={{position: 'absolute', left: 112, top: 816, width: 1696, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         {remaining > 0 ? <div style={{fontSize: 44, color: palette.accent, fontWeight: 700}}>考えてみましょう · あと{remaining}秒</div> : caption ? <div style={{maxWidth: 1440, padding: '16px 32px', borderRadius: 16, background: '#09111eee', color: '#ffffff', fontSize: 44, lineHeight: 1.35, textAlign: 'center', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{caption.text.replace(/\s+/g, ' ')}</div> : null}
       </div>

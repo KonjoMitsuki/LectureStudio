@@ -109,6 +109,12 @@ async def test_analyzer_retries_missing_quiz_and_requests_duration_specific_coun
             explanation['id'] = 'scene_003'
             value['scenes'].append(explanation)
             value['coverage'] = [{'topic_id': 'topic_0001', 'scene_id': 'scene_003', 'narration_excerpt': explanation['narration']}]
+        if not Path(output).name.startswith('plan_'):
+            value = copy.deepcopy(value)
+            for scene in value['scenes']:
+                scene['storyboard'] = {'intent': '問題と説明を区別する', 'elements': [
+                    {'id': 'question', 'kind': 'text', 'x': 100, 'y': 100, 'width': 1400, 'height': 100,
+                     'text': scene['title']}], 'beats': []}
         Path(output).write_text(json.dumps(value, ensure_ascii=False))
         return 0, '', ''
 

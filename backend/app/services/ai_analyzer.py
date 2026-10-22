@@ -16,6 +16,13 @@ from .checkpoints import GENERATION_VERSION, fingerprint, page_chunks, topic_chu
 T = TypeVar("T", bound=StrictModel)
 
 
+def validate_generated_lecture(raw: dict, page_numbers: list[int]) -> Lecture:
+    lecture = validate_lecture(raw, page_numbers)
+    if any(scene.storyboard is None for scene in lecture.scenes):
+        raise ValueError("新規生成は全シーンに内容から設計したstoryboardを設定してください")
+    return lecture
+
+
 def classify_codex_failure(details: str) -> tuple[str, str, str]:
     """Return only fixed diagnostic labels; never expose server messages or stderr."""
     text = details.lower()
@@ -136,7 +143,7 @@ class CodexCLIAnalyzer:
             key = fingerprint([GENERATION_VERSION, prompt])
             directory = workdir / "chapters" / key
             def validate_script(raw, expected=subplan, count=quizzes):
-                result = validate_lecture(raw, [p["number"] for p in subset["pages"]])
+                result = validate_generated_lecture(raw, [p["number"] for p in subset["pages"]])
                 if sum(scene.kind == "quiz" for scene in result.scenes) != count:
                     raise ValueError("指定した問題数のクイズと解説を組み込んでください")
                 validate_coverage(result, expected)
@@ -228,7 +235,7 @@ class CodexCLIAnalyzer:
                 child_prompt = base_prompt + f"\nGENERATION_SETTINGS={options.model_dump_json()}\nこの分割のクイズは{count}問。時間上限はありません。指定項目だけを全て解説します。"
                 child_prompt += "\nSOURCE_PLAN=" + subplan.model_dump_json() + "\nSOURCE_DATA=" + json.dumps(source_data(subset), ensure_ascii=False)
                 def child_validate(raw, expected=subplan, chunk=subset, quiz_count=count):
-                    value = validate_lecture(raw, [p["number"] for p in chunk["pages"]])
+                    value = validate_generated_lecture(raw, [p["number"] for p in chunk["pages"]])
                     validate_coverage(value, expected)
                     if sum(s.kind == "quiz" for s in value.scenes) != quiz_count:
                         raise ValueError("指定した問題数を確認してください")

@@ -39,6 +39,9 @@ class StubAnalyzer(CodexCLIAnalyzer):
             for i, topic in enumerate(topics, 1):
                 scene = copy.deepcopy(self.scene)
                 scene.update(id=f'scene_{i:03}', source_pages=[topic['source_page']], narration=topic['source_excerpt'])
+                scene['storyboard'] = {'intent': '具体的な説明', 'elements': [
+                    {'id': 'topic', 'kind': 'text', 'x': 100, 'y': 100, 'width': 800, 'height': 100,
+                     'text': topic['title']}], 'beats': []}
                 scenes.append(scene)
                 coverage.append({'topic_id': topic['id'], 'scene_id': scene['id'], 'narration_excerpt': scene['narration']})
             value = {'title': '講義', 'learning_goals': ['手順を学ぶ'], 'warnings': [], 'scenes': scenes, 'coverage': coverage}

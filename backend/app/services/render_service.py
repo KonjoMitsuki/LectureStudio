@@ -9,6 +9,7 @@ from .captions import build_captions
 from .diagnostics import duration, record
 from .manim_service import render_manim, timed_animation
 from .checkpoints import save_json
+from ..storyboard import timed_storyboard
 
 
 async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Path, on_progress=None) -> dict:
@@ -21,7 +22,9 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
     for scene, sound in zip(lecture["scenes"], audio, strict=True):
         name = f"{scene['id']}.wav"
         shutil.copyfile(sound["path"], public / name)
-        visual = {**scene["visual"], "steps": [dict(step) for step in scene["visual"]["steps"]]}
+        source_visual = scene.get("visual") or {"type": "keywords", "nodes": [], "edges": [], "items": [],
+            "columns": [], "rows": [], "formula": "", "steps": []}
+        visual = {**source_visual, "steps": [dict(step) for step in source_visual["steps"]]}
         # Estimate cue timing from text position and measured audio length.
         # This is not forced alignment; short scenes limit speaking-rate drift.
         position = 0
@@ -30,6 +33,7 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
                 position = scene["narration"].index(step["cue"], position)
                 step["at_frame"] = round(position / len(scene["narration"]) * sound["audio_seconds"] * 30)
         animation = timed_animation(scene, sound['audio_seconds'])
+        storyboard = timed_storyboard(scene, sound['audio_seconds'])
         manim_src = None
         frames = sound['duration_in_frames'] + scene.get('thinking_seconds', 0) * 30
         fallback_reason = None
@@ -44,10 +48,11 @@ async def render_video(lecture: dict, audio: list[dict], style: str, workdir: Pa
                 record("Manim映像を使用できないため、このシーンをRemotionの固定図解で描画します", level="warning")
         render_report.append({'scene_id': scene['id'], 'requested': scene.get('renderer', 'remotion'),
             'actual': 'manim' if manim_src else 'remotion', 'fallback_reason': fallback_reason,
-            'frames': frames, 'viewport': {'x': 112, 'y': 300, 'width': 1696, 'height': 480},
+            'frames': frames, 'composition': 'storyboard' if storyboard else 'legacy',
+            'viewport': {'x': 112, 'y': 112 if storyboard else 300, 'width': 1696, 'height': 668 if storyboard else 480},
             'caption_top': 816})
         scenes.append({**scene, "visual": visual, "audio_src": name, "audio_seconds": sound["audio_seconds"],
-            'animation': animation, 'manim_src': manim_src,
+            'animation': animation, 'manim_src': manim_src, 'storyboard': storyboard,
             "captions": build_captions(scene["narration"], sound["audio_seconds"]),
             "thinking_start_frame": sound["duration_in_frames"],
             "duration_in_frames": sound["duration_in_frames"] + scene.get("thinking_seconds", 0) * 30, "start_frame": offset})
