@@ -29,7 +29,11 @@ export function visualRanges(props) {
       if (start < duration) ranges.push([offset + start, offset + Math.min(duration - 1, end)]);
     };
     interval(0, 12); // Scene header/footer opening fade.
-    if (!scene.animation) {
+    if (scene.storyboard) {
+      for (const beat of scene.storyboard.beats) {
+        interval(beat.at_frame, beat.at_frame + beat.duration_in_frames);
+      }
+    } else if (!scene.animation) {
       // Match each component's actual reveal time, including narration overrides.
       // Static gaps between entrances require no browser frame captures.
       if (['flowchart', 'state_diagram', 'block_diagram', 'network'].includes(visual.type)) {

@@ -13,3 +13,4 @@ video/out/
 video/public/
 *.egg-info/
 *.tsbuildinfo
+work/

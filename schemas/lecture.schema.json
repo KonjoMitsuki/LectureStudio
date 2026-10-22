@@ -1,5 +1,312 @@
 {
   "$defs": {
+    "Animation": {
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "enum": [
+            "array",
+            "tree",
+            "graph",
+            "formula",
+            "complexity"
+          ],
+          "title": "Template",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "maxItems": 6,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 10,
+          "title": "Edges",
+          "type": "array"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/AnimationState"
+          },
+          "maxItems": 24,
+          "minItems": 1,
+          "title": "States",
+          "type": "array"
+        },
+        "curves": {
+          "items": {
+            "enum": [
+              "constant",
+              "log",
+              "linear",
+              "n_log_n",
+              "quadratic",
+              "cubic"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Curves",
+          "type": "array"
+        }
+      },
+      "required": [
+        "template",
+        "nodes",
+        "edges",
+        "states",
+        "curves"
+      ],
+      "title": "Animation",
+      "type": "object"
+    },
+    "AnimationState": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 8,
+          "title": "Values",
+          "type": "array"
+        },
+        "highlight": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Highlight",
+          "type": "array"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Label",
+          "type": "string"
+        },
+        "formula": {
+          "default": "",
+          "maxLength": 160,
+          "title": "Formula",
+          "type": "string"
+        },
+        "cue": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Cue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "values",
+        "highlight",
+        "label",
+        "formula",
+        "cue"
+      ],
+      "title": "AnimationState",
+      "type": "object"
+    },
+    "Beat": {
+      "additionalProperties": false,
+      "properties": {
+        "cue": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Cue",
+          "type": "string"
+        },
+        "transition_seconds": {
+          "default": 0.5,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Transition Seconds",
+          "type": "number"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/Change"
+          },
+          "maxItems": 24,
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cue",
+        "transition_seconds",
+        "changes"
+      ],
+      "title": "Beat",
+      "type": "object"
+    },
+    "Change": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "pattern": "^[a-zA-Z0-9_-]{1,32}$",
+          "title": "Target",
+          "type": "string"
+        },
+        "x": {
+          "anyOf": [
+            {
+              "maximum": 1696,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X"
+        },
+        "y": {
+          "anyOf": [
+            {
+              "maximum": 668,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "maximum": 1696,
+              "minimum": -1696,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "maximum": 668,
+              "minimum": -668,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "font_size": {
+          "anyOf": [
+            {
+              "maximum": 120,
+              "minimum": 28,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Size"
+        },
+        "tone": {
+          "anyOf": [
+            {
+              "enum": [
+                "fg",
+                "muted",
+                "accent",
+                "warm",
+                "cool"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tone"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "card",
+                "accent",
+                "warm",
+                "cool"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fill"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opacity"
+        }
+      },
+      "required": [
+        "target",
+        "x",
+        "y",
+        "width",
+        "height",
+        "text",
+        "font_size",
+        "tone",
+        "fill",
+        "opacity"
+      ],
+      "title": "Change",
+      "type": "object"
+    },
     "CoverageEntry": {
       "additionalProperties": false,
       "properties": {
@@ -9,7 +316,7 @@
           "type": "string"
         },
         "scene_id": {
-          "pattern": "^scene_[0-9]{3}$",
+          "pattern": "^scene_[0-9]{3,6}$",
           "title": "Scene Id",
           "type": "string"
         },
@@ -59,6 +366,121 @@
       "title": "Edge",
       "type": "object"
     },
+    "Element": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9_-]{1,32}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "rect",
+            "ellipse",
+            "line",
+            "arrow"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "maximum": 1696,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 668,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "width": {
+          "maximum": 1696,
+          "minimum": -1696,
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "maximum": 668,
+          "minimum": -668,
+          "title": "Height",
+          "type": "number"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 160,
+          "title": "Text",
+          "type": "string"
+        },
+        "font_size": {
+          "default": 44,
+          "maximum": 120,
+          "minimum": 28,
+          "title": "Font Size",
+          "type": "number"
+        },
+        "align": {
+          "default": "center",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "title": "Align",
+          "type": "string"
+        },
+        "tone": {
+          "default": "fg",
+          "enum": [
+            "fg",
+            "muted",
+            "accent",
+            "warm",
+            "cool"
+          ],
+          "title": "Tone",
+          "type": "string"
+        },
+        "fill": {
+          "default": "none",
+          "enum": [
+            "none",
+            "card",
+            "accent",
+            "warm",
+            "cool"
+          ],
+          "title": "Fill",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Opacity",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "x",
+        "y",
+        "width",
+        "height",
+        "text",
+        "font_size",
+        "align",
+        "tone",
+        "fill",
+        "opacity"
+      ],
+      "title": "Element",
+      "type": "object"
+    },
     "Node": {
       "additionalProperties": false,
       "properties": {
@@ -85,7 +507,7 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "pattern": "^scene_[0-9]{3}$",
+          "pattern": "^scene_[0-9]{3,6}$",
           "title": "Id",
           "type": "string"
         },
@@ -129,7 +551,15 @@
           "type": "number"
         },
         "visual": {
-          "$ref": "#/$defs/Visual"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Visual"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "kind": {
           "default": "lecture",
@@ -147,6 +577,37 @@
           "minimum": 0,
           "title": "Thinking Seconds",
           "type": "integer"
+        },
+        "renderer": {
+          "default": "remotion",
+          "enum": [
+            "remotion",
+            "manim"
+          ],
+          "title": "Renderer",
+          "type": "string"
+        },
+        "animation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Animation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "storyboard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Storyboard"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -157,7 +618,12 @@
         "source_pages",
         "supplemental",
         "estimated_seconds",
-        "visual"
+        "visual",
+        "kind",
+        "thinking_seconds",
+        "renderer",
+        "animation",
+        "storyboard"
       ],
       "title": "Scene",
       "type": "object"
@@ -188,9 +654,45 @@
       },
       "required": [
         "action",
-        "target"
+        "target",
+        "cue"
       ],
       "title": "Step",
+      "type": "object"
+    },
+    "Storyboard": {
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "elements": {
+          "items": {
+            "$ref": "#/$defs/Element"
+          },
+          "maxItems": 24,
+          "minItems": 1,
+          "title": "Elements",
+          "type": "array"
+        },
+        "beats": {
+          "items": {
+            "$ref": "#/$defs/Beat"
+          },
+          "maxItems": 32,
+          "title": "Beats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "intent",
+        "elements",
+        "beats"
+      ],
+      "title": "Storyboard",
       "type": "object"
     },
     "Visual": {
@@ -310,7 +812,7 @@
       "items": {
         "$ref": "#/$defs/Scene"
       },
-      "maxItems": 160,
+      "maxItems": 12000,
       "minItems": 1,
       "title": "Scenes",
       "type": "array"
@@ -328,7 +830,8 @@
     "title",
     "learning_goals",
     "warnings",
-    "scenes"
+    "scenes",
+    "coverage"
   ],
   "title": "Lecture",
   "type": "object"

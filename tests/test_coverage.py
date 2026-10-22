@@ -38,6 +38,10 @@ def covered_script(valid_lecture):
     second = copy.deepcopy(result['scenes'][0])
     second.update(id='scene_002', title='二分探索の前提', narration='二分探索では、配列が整列済みである必要があります。', source_pages=[2])
     result['scenes'].append(second)
+    for scene in result['scenes']:
+        scene['storyboard'] = {'intent': '探索の前提を説明する', 'elements': [
+            {'id': 'topic', 'kind': 'text', 'x': 100, 'y': 100, 'width': 800, 'height': 100,
+             'text': scene['title']}], 'beats': []}
     result['coverage'] = [
         {'topic_id': 'topic_0001', 'scene_id': 'scene_001', 'narration_excerpt': result['scenes'][0]['narration']},
         {'topic_id': 'topic_0002', 'scene_id': 'scene_002', 'narration_excerpt': second['narration']},

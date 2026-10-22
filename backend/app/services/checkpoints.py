@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-GENERATION_VERSION = 5
+GENERATION_VERSION = 6
 
 
 def fingerprint(value) -> str:

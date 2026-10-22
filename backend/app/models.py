@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from jsonschema import Draft202012Validator
+from .storyboard import Storyboard, validate_storyboard_cues
 
 
 class StrictModel(BaseModel):
@@ -168,14 +169,19 @@ class Scene(StrictModel):
     source_pages: list[int] = Field(max_length=20)
     supplemental: bool
     estimated_seconds: float = Field(gt=0, le=300)
-    visual: Visual
+    visual: Visual | None = None
     kind: Literal["lecture", "quiz", "quiz_answer"] = "lecture"
     thinking_seconds: int = Field(default=0, ge=0, le=10)
     renderer: Literal["remotion", "manim"] = "remotion"
     animation: Animation | None = None
+    storyboard: Storyboard | None = None
 
     @model_validator(mode="after")
     def validate_renderer(self):
+        if self.storyboard is None and self.visual is None:
+            raise ValueError("絵コンテまたは従来図解が必要です")
+        if self.storyboard is not None and (self.renderer != "remotion" or self.animation is not None):
+            raise ValueError("絵コンテはRemotionで描画し、固定アニメーションと混在させません")
         if self.renderer == "manim" and self.animation is None:
             raise ValueError("Manimシーンには固定テンプレートの指定が必要です")
         return self
@@ -226,12 +232,14 @@ def validate_lecture(raw: dict, page_numbers: list[int]) -> Lecture:
     result = Lecture.model_validate(raw)
     available = set(page_numbers)
     for scene in result.scenes:
+        if scene.storyboard:
+            validate_storyboard_cues(scene.storyboard, scene.narration)
         if not set(scene.source_pages) <= available:
             raise ValueError("資料に存在しない参照ページがあります")
         if not scene.source_pages and not scene.supplemental:
             raise ValueError("資料由来のシーンには参照ページが必要です")
         last_position = -1
-        for step in scene.visual.steps:
+        for step in scene.visual.steps if scene.visual else []:
             if step.cue:
                 position = scene.narration.find(step.cue, max(0, last_position))
                 if position < 0:
